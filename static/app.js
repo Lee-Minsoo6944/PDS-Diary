@@ -11,7 +11,11 @@ const fmtKST = new Intl.DateTimeFormat("ko-KR", {
   timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false,
 });
 
-const S = { plans: [], planId: null, plan: null, tab: "plan", ev: null, today: "", completeKeys: new Map(), editingPlan: false };
+const S = {
+  plans: [], planId: null, plan: null, tab: "calendar", ev: null, today: "", completeKeys: new Map(), editingPlan: false,
+  month: "", day: "", memo: { day: "", timer: null, dirty: false },
+};
+const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
 
 // ---------------------------------------------------------------- 도구
 const $ = (sel) => document.querySelector(sel);
@@ -59,7 +63,7 @@ function formData(form) { return Object.fromEntries(new FormData(form).entries()
 // ---------------------------------------------------------------- 주소(#) ↔ 상태
 function readHash() {
   const p = new URLSearchParams(location.hash.slice(1));
-  return { plan: Number(p.get("plan")) || null, tab: p.get("tab") || "plan", ev: p.get("ev") || null };
+  return { plan: Number(p.get("plan")) || null, tab: p.get("tab") || "calendar", ev: p.get("ev") || null };
 }
 function writeHash() {
   const p = new URLSearchParams();
@@ -85,7 +89,8 @@ async function render() {
   for (const s of document.querySelectorAll(".tab")) s.hidden = s.id !== "tab-" + S.tab;
   $("#plan-select").value = S.planId ?? "";
   S.plan = S.planId ? await api("GET", `/api/plans/${S.planId}`) : null;
-  if (!S.plan && S.tab !== "plan" && S.tab !== "export") { S.tab = "plan"; return render(); }
+  if (!S.plan && !["plan", "export", "calendar"].includes(S.tab)) { S.tab = "plan"; return render(); }
+  if (S.tab === "calendar") await renderCalendar();
   if (S.tab === "plan") renderPlan();
   if (S.tab === "todos") await renderTodos();
   if (S.tab === "logs") await renderLogs();
@@ -102,7 +107,7 @@ function renderPlan() {
   if (!p) { if (!S.editingPlan) openPlanForm(null); return; }
   view.append(
     h("h2", {}, `#${p.id} ${p.title}`, h("small", { class: "muted" }, ` (현재 ${p.current_version}판)`)),
-    p.carried_from ? h("p", { class: "carried" }, `지난 돌아보기(#${p.carried_from.id})에서 넘어온 고칠 점: `, h("b", {}, p.carried_from.improvement)) : null,
+    p.carried_from ? h("p", { class: "carried" }, `지난 돌아보기(#${p.carried_from.id})에서 넘어온 고칠 점: `, h("b", {}, p.carried_from.improvement)) : "",
     h("dl", { class: "grid" },
       h("dt", {}, "기간"), h("dd", {}, `${p.start_date} ~ ${p.end_date}`),
       h("dt", {}, "우선순위"), h("dd", {}, PRI[p.priority]),
@@ -183,26 +188,42 @@ async function renderTodos() {
     `정렬 기준: ${SORT_LABEL[data.sort]} ${data.dir === "asc" ? "오름차순" : "내림차순"}` +
     (data.sort === "due" ? " (마감일 없는 할 일은 맨 뒤)" : "") +
     " → 값이 같으면 ID 오름차순. 거르기와 정렬은 서버에서 합니다.";
-  const tb = clear($("#todo-list"));
-  if (!data.items.length) tb.append(h("tr", {}, h("td", { colspan: 9, class: "muted" }, "조건에 맞는 할 일이 없습니다.")));
-  for (const t of data.items) {
-    tb.append(h("tr", { class: t.status === "done" ? "done" : null, id: `todo-${t.id}` },
-      h("td", {}, t.id),
-      h("td", {}, t.status === "done" ? "완료" : "진행 중", t.overdue ? h("span", { class: "badge red" }, "지연") : null,
+  const ul = clear($("#todo-list"));
+  if (!data.items.length) ul.append(h("li", { class: "empty" }, "조건에 맞는 할 일이 없습니다."));
+  for (const t of data.items) ul.append(todoItem(t, { showDue: true }));
+}
+
+// 체크리스트 한 줄(할 일 탭·오른쪽 장 공통)
+function todoItem(t, { showDue = false, showPlan = false } = {}) {
+  const done = t.status === "done";
+  const meta = [
+    `#${t.id}`,
+    showPlan ? `계획 #${t.plan_id}` : null,
+    showDue ? `마감 ${t.due_date || "없음"}` : null,
+    `우선순위 ${PRI[t.priority]}`,
+    `예상 ${t.estimated_minutes}분`,
+    `실제 ${t.actual_minutes}분(${t.log_count}건)`,
+  ].filter(Boolean).join(" · ");
+  return h("li", { class: done ? "done" : null, id: `todo-${t.id}` },
+    h("input", { type: "checkbox", checked: done, title: done ? "진행 중으로 되돌리기" : "완료로 바꾸기",
+      "aria-label": `${t.title} 완료`, onclick: (e) => { e.preventDefault(); done ? reopen(t.id) : complete(t.id); } }),
+    h("div", { class: "body" },
+      h("div", { class: "title" }, t.title,
+        t.overdue ? h("span", { class: "badge red" }, "지연") : null,
         t.blocked ? h("span", { class: "badge amber" }, "막힘") : null),
-      h("td", {}, h("a", { href: "#", onclick: (e) => { e.preventDefault(); showTodo(t.id); } }, t.title),
-        t.note ? h("div", { class: "muted small" }, t.note) : null),
-      h("td", {}, t.due_date || "—"), h("td", {}, PRI[t.priority]),
-      h("td", {}, `${t.estimated_minutes}분`), h("td", {}, `${t.actual_minutes}분 (${t.log_count}건)`),
-      h("td", {}, t.tags.map((g) => h("span", { class: "tag" }, "#" + g))),
-      h("td", { class: "actions" },
-        t.status === "done"
-          ? h("button", { type: "button", class: "ghost small", onclick: () => reopen(t.id) }, "되돌리기")
-          : h("button", { type: "button", class: "small", onclick: () => complete(t.id) }, "완료"),
-        h("button", { type: "button", class: "ghost small", onclick: () => editTodo(t) }, "고치기"),
-        h("button", { type: "button", class: "ghost small", onclick: () => addLogFor(t.id) }, "기록"),
-        h("button", { type: "button", class: "ghost small danger", onclick: () => removeTodo(t) }, "지우기"))));
-  }
+      h("div", { class: "meta" }, meta, " ", t.tags.map((g) => h("span", { class: "tag" }, "#" + g))),
+      t.note ? h("div", { class: "meta" }, t.note) : null),
+    h("div", { class: "acts" },
+      h("button", { type: "button", class: "link", onclick: () => showTodoFromAnywhere(t.id) }, "자세히"),
+      h("button", { type: "button", class: "link", onclick: () => editTodoFromAnywhere(t) }, "고치기"),
+      h("button", { type: "button", class: "link", onclick: () => addLogFor(t.id) }, "기록"),
+      h("button", { type: "button", class: "link", onclick: () => removeTodo(t) }, "지우기")));
+}
+async function showTodoFromAnywhere(id) { if (S.tab !== "todos") await go("todos"); showTodo(id); }
+async function editTodoFromAnywhere(t) { if (S.tab !== "todos") await go("todos"); editTodo(t); }
+async function refreshCurrent() {
+  if (S.tab === "calendar") await renderCalendar();
+  else await renderTodos();
 }
 
 async function complete(id) {
@@ -214,17 +235,17 @@ async function complete(id) {
     S.completeKeys.delete(id);
     toast(r.created ? `#${id} 완료로 바꿨습니다` : `#${id}는 이미 완료 상태입니다 (중복 기록 없음)`);
   } catch (e) { toast(e.message, true); }
-  await renderTodos();
+  await refreshCurrent();
 }
 async function reopen(id) {
   try { await api("POST", `/api/todos/${id}/reopen`); toast(`#${id} 진행 중으로 되돌렸습니다`); } catch (e) { toast(e.message, true); }
-  await renderTodos();
+  await refreshCurrent();
 }
 async function removeTodo(t) {
   if (!confirm(`할 일 #${t.id} 「${t.title}」을(를) 지울까요?`)) return;
   try { await api("DELETE", `/api/todos/${t.id}`); toast(`#${t.id} 지웠습니다`); } catch (e) { toast(e.message, true); }
   $("#todo-detail").hidden = true;
-  await renderTodos();
+  await refreshCurrent();
 }
 function editTodo(t) {
   const f = $("#todo-form");
@@ -290,20 +311,20 @@ async function renderLogs(selectedTodo) {
     }
   }
   const logs = await api("GET", `/api/logs?${q}`);
-  const tb = clear($("#log-list"));
-  if (!logs.length) tb.append(h("tr", {}, h("td", { colspan: 7, class: "muted" }, "실행 기록이 없습니다.")));
+  const ul = clear($("#log-list"));
+  if (!logs.length) ul.append(h("li", { class: "muted" }, "실행 기록이 없습니다."));
   let sum = 0;
   for (const w of logs) {
     sum += w.actual_minutes;
-    tb.append(h("tr", {},
-      h("td", {}, w.id),
-      h("td", {}, h("a", { href: "#", onclick: async (e) => { e.preventDefault(); await go("todos"); showTodo(w.todo_id); } }, `#${w.todo_id} ${w.todo_title}`),
-        h("div", { class: "muted small" }, `할 일 예상 ${w.todo_estimated_minutes}분`)),
-      h("td", {}, showUTC(w.started_at)), h("td", {}, showUTC(w.ended_at)), h("td", {}, w.actual_minutes),
-      h("td", {}, w.blocker || "—"),
-      h("td", {}, h("button", { type: "button", class: "ghost small danger", onclick: () => removeLog(w) }, "지우기"))));
+    ul.append(h("li", {},
+      h("div", {}, h("b", {}, `#${w.id} `),
+        h("a", { href: "#", onclick: (e) => { e.preventDefault(); showTodoFromAnywhere(w.todo_id); } }, `할 일 #${w.todo_id} ${w.todo_title}`),
+        ` · 실제 ${w.actual_minutes}분 `, h("span", { class: "muted small" }, `(할 일 예상 ${w.todo_estimated_minutes}분)`),
+        h("button", { type: "button", class: "link", onclick: () => removeLog(w) }, "지우기")),
+      h("div", { class: "when" }, `${showUTC(w.started_at)} → ${showUTC(w.ended_at)}`),
+      w.blocker ? h("div", {}, h("span", { class: "badge amber" }, "막힘"), " ", w.blocker) : null));
   }
-  if (logs.length) tb.append(h("tr", { class: "sum" }, h("td", { colspan: 4 }, "합계"), h("td", {}, sum), h("td", { colspan: 2 })));
+  if (logs.length) ul.append(h("li", { class: "sum" }, `합계 ${sum}분 (${logs.length}건)`));
 }
 async function addLogFor(todoId) { S.tab = "logs"; S.ev = null; writeHash(); await render(); $("#log-todo").value = todoId; $("#log-form").scrollIntoView(); }
 async function removeLog(w) {
@@ -348,9 +369,154 @@ async function renderReview() {
   }
 }
 
+// ---- 달력(왼쪽 장) + 하루(오른쪽 장)
+const ymd = (d) => d.toISOString().slice(0, 10);                 // UTC 날짜 객체 → 'YYYY-MM-DD'
+const fromYmd = (s) => new Date(s + "T00:00:00Z");
+const addDays = (s, n) => ymd(new Date(fromYmd(s).getTime() + n * 864e5));
+function monthRange(month) { // 'YYYY-MM' → 달력에 보이는 첫날·마지막날(일요일 시작, 주 단위)
+  const first = fromYmd(month + "-01");
+  const start = addDays(ymd(first), -first.getUTCDay());
+  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0));
+  const end = addDays(ymd(last), 6 - last.getUTCDay());
+  return { start, end };
+}
+function shiftMonth(month, n) {
+  const d = fromYmd(month + "-01");
+  return ymd(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1))).slice(0, 7);
+}
+
+async function renderCalendar() {
+  const [y, m] = S.month.split("-").map(Number);
+  $("#cal-title").textContent = `${y}년 ${m}월`;
+  const { start, end } = monthRange(S.month);
+  const [todos, notes] = await Promise.all([
+    api("GET", `/api/todos?due_from=${start}&due_to=${end}&sort=priority`),
+    api("GET", `/api/notes?from=${start}&to=${end}`),
+  ]);
+  const byDay = {};
+  for (const t of todos.items) (byDay[t.due_date] ||= []).push(t);
+  const noteDays = new Set(notes);
+  const grid = clear($("#cal-grid"));
+  for (let d = start; d <= end; d = addDays(d, 1)) {
+    const wd = fromYmd(d).getUTCDay();
+    const items = byDay[d] || [];
+    const cls = ["cell", d.slice(0, 7) !== S.month && "other", wd === 0 && "sun", wd === 6 && "sat",
+      d === S.today && "today", d === S.day && "selected"].filter(Boolean).join(" ");
+    const list = h("ul", { class: "mini" });
+    const SHOW = 4;
+    for (const t of items.slice(0, SHOW)) {
+      const done = t.status === "done";
+      list.append(h("li", { class: done ? "done" : t.overdue ? "overdue" : null, title: `#${t.id} ${t.title} (계획 #${t.plan_id})` },
+        h("input", { type: "checkbox", checked: done, "aria-label": `${t.title} 완료`,
+          onclick: (e) => { e.stopPropagation(); e.preventDefault(); done ? reopen(t.id) : complete(t.id); } }),
+        h("span", {}, t.title)));
+    }
+    if (items.length > SHOW) list.append(h("li", { class: "more" }, `+${items.length - SHOW}개 더`));
+    const cell = h("div", { class: cls, "data-date": d, onclick: () => selectDay(d) },
+      h("div", { class: "dnum" }, h("b", {}, Number(d.slice(8))), noteDays.has(d) ? h("i", { class: "memo-dot", title: "메모 있음" }) : null),
+      h("button", { type: "button", class: "add ghost", title: "이 날 할 일 적기", "aria-label": `${d} 할 일 적기`,
+        onclick: (e) => { e.stopPropagation(); openCellInput(cell, d); } }, "＋"),
+      list);
+    grid.append(cell);
+  }
+  await renderDay();
+}
+
+function openCellInput(cell, d) {
+  if (!S.planId) { toast("먼저 「+ 새 계획」으로 계획을 만들어 주세요", true); return; }
+  if (cell.querySelector(".cell-input")) return cell.querySelector(".cell-input").focus();
+  const input = h("input", { class: "cell-input", maxlength: 200, placeholder: "할 일 + Enter" });
+  input.addEventListener("click", (e) => e.stopPropagation());
+  input.addEventListener("keydown", async (e) => {
+    if (e.key === "Escape") return input.remove();
+    if (e.key !== "Enter" || e.isComposing) return;
+    e.preventDefault();
+    const title = input.value.trim();
+    if (!title) return;
+    input.disabled = true;
+    try {
+      await api("POST", "/api/todos", { plan_id: S.planId, title, due_date: d, priority: 2, estimated_minutes: 30 });
+      toast(`${d}에 할 일을 적었습니다 (예상 30분 — 오른쪽 장에서 고칠 수 있음)`);
+      S.day = d;
+      await renderCalendar();
+      const again = document.querySelector(`.cell[data-date="${d}"]`);
+      if (again) openCellInput(again, d); // 이어서 적기
+    } catch (err) { toast(err.message, true); input.disabled = false; }
+  });
+  input.addEventListener("blur", () => setTimeout(() => { if (!input.disabled) input.remove(); }, 150));
+  cell.append(input);
+  input.focus();
+}
+
+async function selectDay(d) {
+  await flushMemo();
+  S.day = d;
+  if (d.slice(0, 7) !== S.month) { S.month = d.slice(0, 7); return renderCalendar(); }
+  for (const c of document.querySelectorAll(".cell")) c.classList.toggle("selected", c.dataset.date === d);
+  await renderDay();
+}
+
+async function renderDay() {
+  const d = S.day;
+  const wd = WEEK[fromYmd(d).getUTCDay()];
+  $("#day-title").textContent = `${Number(d.slice(5, 7))}월 ${Number(d.slice(8))}일 ${wd}요일`;
+  const data = await api("GET", `/api/todos?due_from=${d}&due_to=${d}&sort=priority`);
+  const doneN = data.items.filter((t) => t.status === "done").length;
+  $("#day-sub").textContent = `${d === S.today ? "오늘 · " : ""}할 일 ${data.items.length}개 · 완료 ${doneN}개`;
+  const ul = clear($("#day-todos"));
+  if (!data.items.length) ul.append(h("li", { class: "empty" }, "이 날 할 일이 없습니다. 아래에 적어 보세요."));
+  for (const t of data.items) ul.append(todoItem(t, { showPlan: S.plans.length > 1 }));
+  $("#day-add").querySelector("button").disabled = !S.planId;
+  if (S.memo.day !== d) {
+    const note = await api("GET", `/api/notes/${d}`);
+    S.memo.day = d; S.memo.dirty = false;
+    $("#memo").value = note.body;
+    $("#memo-status").textContent = note.updated_at ? `저장됨 ${showUTC(note.updated_at).slice(-5)}` : "";
+  }
+}
+
+async function saveMemo() {
+  clearTimeout(S.memo.timer);
+  if (!S.memo.dirty) return;
+  const day = S.memo.day, body = $("#memo").value;
+  S.memo.dirty = false;
+  $("#memo-status").textContent = "저장 중…";
+  try {
+    const r = await api("PUT", `/api/notes/${day}`, { body });
+    if (S.memo.day === day) $("#memo-status").textContent = `저장됨 ${showUTC(r.updated_at).slice(-5)}`;
+    const cell = document.querySelector(`.cell[data-date="${day}"] .dnum`);
+    if (cell) { // 칸의 메모 점 갱신
+      const dot = cell.querySelector(".memo-dot");
+      if (body.trim() && !dot) cell.append(h("i", { class: "memo-dot", title: "메모 있음" }));
+      if (!body.trim() && dot) dot.remove();
+    }
+  } catch (e) { S.memo.dirty = true; $("#memo-status").textContent = "저장 실패"; toast(e.message, true); }
+}
+function flushMemo() { return saveMemo(); }
+
 // ---------------------------------------------------------------- 이벤트
 function bind() {
-  $("#tabs").addEventListener("click", (e) => { const t = e.target.closest("button"); if (t) go(t.dataset.tab); });
+  $("#cal-prev").addEventListener("click", async () => { await flushMemo(); S.month = shiftMonth(S.month, -1); renderCalendar(); });
+  $("#cal-next").addEventListener("click", async () => { await flushMemo(); S.month = shiftMonth(S.month, 1); renderCalendar(); });
+  $("#cal-today").addEventListener("click", () => selectDay(S.today).then(() => { if (S.month !== S.today.slice(0, 7)) { S.month = S.today.slice(0, 7); renderCalendar(); } }));
+  $("#memo").addEventListener("input", () => {
+    S.memo.dirty = true; $("#memo-status").textContent = "적는 중…";
+    clearTimeout(S.memo.timer); S.memo.timer = setTimeout(saveMemo, 800);
+  });
+  $("#memo").addEventListener("blur", saveMemo);
+  window.addEventListener("beforeunload", (e) => { if (S.memo.dirty) { saveMemo(); e.preventDefault(); } });
+  $("#day-add").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!S.planId) return toast("먼저 「+ 새 계획」으로 계획을 만들어 주세요", true);
+    const f = e.target, d = formData(f);
+    try {
+      await api("POST", "/api/todos", { plan_id: S.planId, title: d.title, priority: d.priority,
+        estimated_minutes: d.estimated_minutes || 0, due_date: S.day });
+      f.elements.title.value = ""; toast("할 일을 적었습니다");
+      await renderCalendar(); $("#day-add").elements.title.focus();
+    } catch (err) { toast(err.message, true); }
+  });
+  $("#tabs").addEventListener("click", async (e) => { const t = e.target.closest("button"); if (t) { await flushMemo(); go(t.dataset.tab); } });
   $("#plan-select").addEventListener("change", (e) => { S.planId = Number(e.target.value); S.ev = null; writeHash(); render(); });
   $("#btn-new-plan").addEventListener("click", () => { S.tab = "plan"; writeHash(); render().then(() => openPlanForm(null)); });
   $("#plan-form-cancel").addEventListener("click", () => { $("#plan-form").hidden = true; S.editingPlan = false; });
@@ -420,6 +586,7 @@ async function start() {
   bind();
   const meta = await api("GET", "/api/meta");
   $("#today").textContent = `서울 기준 오늘: ${meta.today_kst}`;
+  S.today = meta.today_kst; S.day = S.today; S.month = S.today.slice(0, 7);
   const st = readHash();
   S.planId = st.plan; S.tab = st.tab; S.ev = st.ev;
   await loadPlans();

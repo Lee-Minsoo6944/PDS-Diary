@@ -200,6 +200,24 @@ class PDS(unittest.TestCase):
         self.assertIn("지금은 로그인이 없어 링크를 아는 사람은 누구나 볼 수 있습니다. 남이 봐도 괜찮은 내용만 넣으세요",
                       html.decode("utf-8"))
 
+    def test_calendar_range_and_day_notes(self):
+        a = self.todo(title="달력 안", due_date=D(1))
+        self.todo(title="달력 밖", due_date=D(40))
+        got = ok("GET", f"/api/todos?due_from={D(0)}&due_to={D(7)}")["items"]
+        self.assertIn(a["id"], [t["id"] for t in got])
+        self.assertNotIn("달력 밖", [t["title"] for t in got])
+        day = D(2)
+        self.assertEqual(ok("GET", f"/api/notes/{day}")["body"], "")
+        evil = "<script>alert(1)</script> 오늘 메모"
+        n = ok("PUT", f"/api/notes/{day}", {"body": evil})
+        self.assertEqual(n["body"], evil)
+        ok("PUT", f"/api/notes/{day}", {"body": evil + "!"})  # 같은 날은 덮어쓰기(행 1개)
+        self.assertEqual(ok("GET", f"/api/notes/{day}")["body"], evil + "!")
+        self.assertIn(day, ok("GET", f"/api/notes?from={D(0)}&to={D(7)}"))
+        self.assertTrue(any(r["note_date"] == day for r in call("GET", "/api/export")[1]["day_notes"]))
+        s, _, _ = call("PUT", "/api/notes/2026-13-01", {"body": "x"})
+        self.assertEqual(s, 400)
+
     def test_validation(self):
         s, d, _ = call("POST", "/api/plans", {"title": "x", "start_date": D(5), "end_date": D(1), "priority": 1,
                                               "success_criteria": "x", "estimated_minutes": 1})

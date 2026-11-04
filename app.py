@@ -126,6 +126,11 @@ CREATE TABLE IF NOT EXISTS reflections (
 );
 CREATE INDEX IF NOT EXISTS todos_plan ON todos (plan_id);
 CREATE INDEX IF NOT EXISTS logs_todo ON work_logs (todo_id);
+CREATE TABLE IF NOT EXISTS day_notes (
+    note_date  TEXT PRIMARY KEY,
+    body       TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+);
 """
 
 PRIORITY_LABEL = {1: "높음", 2: "보통", 3: "낮음"}
@@ -440,6 +445,11 @@ def list_todos(conn, qs):
     if tag:
         where.append("EXISTS (SELECT 1 FROM todo_tags g WHERE g.todo_id = t.id AND g.tag = ?)")
         args.append(tag)
+    for key, op in (("due_from", ">="), ("due_to", "<=")):
+        d = req_date(qs, key, required=False)
+        if d:
+            where.append(f"t.due_date {op} ?")
+            args.append(d)
     ids = qs.get("ids")
     if ids:
         id_list = [get_id(x) for x in ids.split(",") if x][:500]
@@ -635,12 +645,38 @@ def create_reflection(conn, plan_id, body):
     return plan_detail(conn, plan_id) | {"new_reflection_id": cur.lastrowid}
 
 
+# ---------------------------------------------------------------- 날짜별 메모
+def get_note(conn, day):
+    r = conn.execute("SELECT * FROM day_notes WHERE note_date = ?", (day,)).fetchone()
+    return dict(r) if r else {"note_date": day, "body": "", "updated_at": None}
+
+
+def put_note(conn, day, body):
+    text = body.get("body", "")
+    if not isinstance(text, str):
+        raise ApiError(400, "body: 글자여야 합니다")
+    if len(text) > 5000:
+        raise ApiError(400, "body: 5000자 이하로 적어 주세요")
+    with tx(conn):
+        conn.execute("INSERT INTO day_notes (note_date, body, updated_at) VALUES (?,?,?)"
+                     " ON CONFLICT(note_date) DO UPDATE SET body = excluded.body, updated_at = excluded.updated_at",
+                     (day, text, now_utc()))
+    return get_note(conn, day)
+
+
+def list_notes(conn, qs):
+    lo, hi = req_date(qs, "from"), req_date(qs, "to")
+    rows = conn.execute("SELECT note_date FROM day_notes WHERE body <> '' AND note_date BETWEEN ? AND ?"
+                        " ORDER BY note_date", (lo, hi))
+    return [r[0] for r in rows]
+
+
 # ---------------------------------------------------------------- 내보내기
 def export_all(conn):
     out = {"app": "plan-do-see-diary", "schema_version": SCHEMA_VERSION, "exported_at": now_utc(),
            "time_rules": {"instants": "UTC ISO-8601 (Z)", "dates": "Asia/Seoul calendar date YYYY-MM-DD",
                           "durations": "minutes (integer)"}}
-    for table in ("plans", "plan_versions", "todos", "todo_tags", "completions", "work_logs", "reflections"):
+    for table in ("plans", "plan_versions", "todos", "todo_tags", "completions", "work_logs", "reflections", "day_notes"):
         out[table] = [dict(r) for r in conn.execute(f"SELECT * FROM {table} ORDER BY rowid")]
     return out
 
@@ -691,6 +727,14 @@ def route(method, path, qs, body, conn):
         return list_logs(conn, qs)
     if n == 2 and parts[0] == "logs" and method == "DELETE":
         return delete_log(conn, get_id(parts[1]))
+    if parts == ["notes"] and method == "GET":
+        return list_notes(conn, qs)
+    if n == 2 and parts[0] == "notes":
+        day = req_date({"date": parts[1]}, "date")
+        if method == "GET":
+            return get_note(conn, day)
+        if method == "PUT":
+            return put_note(conn, day, body)
     if parts == ["export"] and method == "GET":
         return export_all(conn)
     raise ApiError(404, "없는 주소입니다")

@@ -159,7 +159,8 @@ def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = connect()
     try:
-        conn.execute("PRAGMA journal_mode = WAL")
+        # WAL은 네트워크 디스크(PythonAnywhere 등)에서 믿을 수 없어 기본 방식을 씁니다.
+        conn.execute("PRAGMA journal_mode = DELETE")
         conn.executescript(SCHEMA)
         conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)",
                      (str(SCHEMA_VERSION),))

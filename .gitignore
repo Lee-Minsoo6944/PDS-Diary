@@ -1,0 +1,10 @@
+# 데이터베이스(내 기록)는 Git에 올리지 않습니다
+data/
+*.db
+*.db-wal
+*.db-shm
+# 비밀값 파일
+.env
+.env.*
+__pycache__/
+*.pyc

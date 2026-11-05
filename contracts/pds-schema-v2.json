@@ -4,9 +4,9 @@
   "database": "SQLite 3 (서버 파일 data/pds.db, 경로는 환경변수 PDS_DB_PATH 로 바꿀 수 있음)",
   "time_rules": {
     "instant_columns": "이름이 _at 으로 끝나는 열. UTC ISO-8601 'YYYY-MM-DDTHH:MM:SSZ' 로 저장, 화면에서는 Asia/Seoul(+09:00)로 보여 줌",
-    "date_columns": "이름이 _date 로 끝나는 열과 reflections.period_from/period_to. 서울 기준 달력 날짜 'YYYY-MM-DD' (시간대 없음), day_notes.note_date",
-    "input": "실행 기록 시작·끝 시각은 화면에서 서울 시간으로 입력받아 '+09:00' 을 붙여 보내고, 서버가 UTC로 바꿔 저장",
-    "today": "'오늘'은 서버에서 UTC+9 로 계산한 서울 날짜",
+    "date_columns": "이름이 _date 로 끝나는 열과 reflections.period_from/period_to. 대한민국 기준 달력 날짜 'YYYY-MM-DD' (시간대 없음), day_notes.note_date",
+    "input": "실행 기록 시작·끝 시각은 화면에서 대한민국 시간으로 입력받아 '+09:00' 을 붙여 보내고, 서버가 UTC로 바꿔 저장",
+    "today": "'오늘'은 서버에서 UTC+9 로 계산한 대한민국 날짜",
     "durations": "시간 길이(…_minutes)는 모두 분 단위 정수. 저장·계산·표시 단위가 같음"
   },
   "tables": {
@@ -18,8 +18,8 @@
         "start_date": "TEXT date NOT NULL",
         "end_date": "TEXT date NOT NULL, CHECK end_date >= start_date",
         "priority": "INTEGER NOT NULL, 1=높음 2=보통 3=낮음",
-        "success_criteria": "TEXT NOT NULL (≤1000자)",
-        "estimated_minutes": "INTEGER NOT NULL ≥0 (분)",
+        "success_criteria": "TEXT NOT NULL (≤1000자) — 화면 이름 'Completion criteria', 완료 기준을 글로 적음",
+        "estimated_minutes": "INTEGER NOT NULL ≥0 (분) — 이제 화면에서 받지 않음. 안 보내면 새 계획은 0, 고칠 때는 기존 값 유지",
         "carried_from_reflection_id": "INTEGER NULL FK → reflections.id (이 계획으로 넘어온 고칠 점)",
         "current_version": "INTEGER NOT NULL, 지금 값이 몇 번째 판인지",
         "created_at": "TEXT instant",
@@ -110,7 +110,7 @@
     "day_notes": {
       "purpose": "달력 오른쪽 장의 날짜별 메모장. 날짜 하나에 메모 하나(같은 날 저장은 덮어쓰기)",
       "columns": {
-        "note_date": "TEXT date PRIMARY KEY (서울 기준 YYYY-MM-DD)",
+        "note_date": "TEXT date PRIMARY KEY (대한민국 기준 YYYY-MM-DD)",
         "body": "TEXT (≤5000자)",
         "updated_at": "TEXT instant"
       }
@@ -137,7 +137,7 @@
     "scope": "그 계획에 딸리고 deleted_at IS NULL 인 할 일. 기간을 고르면 due_date 가 그 사이인 것만",
     "planned": "대상 할 일 수",
     "done": "그중 status = 'done'",
-    "delayed": "status <> 'done' AND due_date < 서울 기준 오늘 (완료한 것은 세지 않음)",
+    "delayed": "status <> 'done' AND due_date < 대한민국 기준 오늘 (완료한 것은 세지 않음)",
     "blocked": "blocker 가 빈 글자가 아닌 실행 기록이 하나라도 있는 할 일 수",
     "estimated_minutes": "대상 할 일 estimated_minutes 합 (없으면 0)",
     "actual_minutes": "대상 할 일의 work_logs.actual_minutes 합 (없으면 0)",

@@ -1,225 +1,223 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>플랜두씨 다이어리</title>
+  <title>Plan · Do · See Diary</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/app.js" defer></script>
 </head>
 <body>
   <header class="desk-head">
-    <h1>플랜두씨 다이어리 <small>Plan → Do → See</small></h1>
-    <p class="notice" id="public-notice" role="note">
-      지금은 로그인이 없어 링크를 아는 사람은 누구나 볼 수 있습니다. 남이 봐도 괜찮은 내용만 넣으세요
-    </p>
+    <h1 class="brand">Plan <i>·</i> Do <i>·</i> See <span>Diary</span></h1>
     <div class="planbar">
-      <label>지금 계획 <select id="plan-select"></select></label>
-      <button id="btn-new-plan" type="button">+ 새 계획</button>
-      <span class="muted" id="today"></span>
+      <label class="inline">Plan <select id="plan-select"></select></label>
+      <button id="btn-new-plan" type="button" class="ghost light">+ New plan</button>
+      <span class="today" id="today"></span>
     </div>
   </header>
 
   <div class="book-wrap">
-    <nav class="ribbons" id="tabs" aria-label="다이어리 목차">
-      <button type="button" data-tab="calendar">달력</button>
-      <button type="button" data-tab="plan">계획</button>
-      <button type="button" data-tab="todos">할 일</button>
-      <button type="button" data-tab="logs">한 일</button>
-      <button type="button" data-tab="review">돌아보기</button>
-      <button type="button" data-tab="export">내보내기</button>
-    </nav>
-
     <div class="book">
-      <!-- ========== 달력 ========== -->
+      <!-- ========== Calendar ========== -->
       <section id="tab-calendar" class="tab spread" hidden>
         <div class="page left">
           <div class="month-head">
-            <button type="button" class="icon" id="cal-prev" aria-label="이전 달">‹</button>
             <h2 id="cal-title"></h2>
-            <button type="button" class="icon" id="cal-next" aria-label="다음 달">›</button>
-            <button type="button" class="ghost small" id="cal-today">오늘</button>
+            <div class="month-nav">
+              <button type="button" class="icon" id="cal-prev" aria-label="Previous month">‹</button>
+              <button type="button" class="ghost small" id="cal-today">Today</button>
+              <button type="button" class="icon" id="cal-next" aria-label="Next month">›</button>
+            </div>
           </div>
           <div class="cal-week">
-            <span class="sun">일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span class="sat">토</span>
+            <span class="sun">Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span class="sat">Sat</span>
           </div>
           <div class="cal-grid" id="cal-grid"></div>
-          <p class="page-foot muted">칸의 <b>＋</b>를 누르면 그날 할 일을 바로 적을 수 있습니다. 네모를 누르면 완료/되돌리기. 칸을 누르면 오른쪽 장에 그날이 펼쳐집니다.</p>
+          <p class="page-foot">Click <b>+</b> in a cell to add a to-do for that day · tick a box to complete or reopen · click a day to open it on the right.</p>
         </div>
         <div class="page right">
           <div class="day-head">
             <h2 id="day-title"></h2>
             <span class="muted small" id="day-sub"></span>
           </div>
-          <h3 class="section-label">오늘의 할 일</h3>
-          <ul class="checklist" id="day-todos"></ul>
+          <h3 class="section-label">To-dos</h3>
+          <ul class="checklist fill-sm" id="day-todos"></ul>
           <form id="day-add" class="day-add">
-            <input name="title" placeholder="할 일 적고 Enter" maxlength="200" required>
-            <select name="priority" aria-label="우선순위"><option value="1">높음</option><option value="2" selected>보통</option><option value="3">낮음</option></select>
-            <input name="estimated_minutes" type="number" min="0" value="30" aria-label="예상 시간(분)" title="예상 시간(분)">
-            <span class="muted small">분</span>
-            <button type="submit" class="small">적기</button>
+            <input name="title" placeholder="Add a to-do and press Enter" maxlength="200" required>
+            <select name="priority" aria-label="Priority"><option value="1">High</option><option value="2" selected>Normal</option><option value="3">Low</option></select>
+            <input name="estimated_minutes" type="number" min="0" value="30" aria-label="Estimate (minutes)" title="Estimate (minutes)">
+            <span class="muted small">min</span>
+            <button type="submit" class="small">Add</button>
           </form>
-          <h3 class="section-label">메모 <span class="muted small" id="memo-status"></span></h3>
-          <textarea id="memo" class="lined" maxlength="5000" placeholder="오늘 있었던 일, 떠오른 생각을 자유롭게 적으세요. 적는 대로 저장됩니다."></textarea>
+          <h3 class="section-label">Notes <span class="muted small" id="memo-status"></span></h3>
+          <textarea id="memo" class="lined fill" maxlength="5000" placeholder="Write down what happened today or anything on your mind. It saves as you type."></textarea>
         </div>
       </section>
 
-      <!-- ========== 계획 ========== -->
+      <!-- ========== Plan ========== -->
       <section id="tab-plan" class="tab spread" hidden>
         <div class="page left">
           <div id="plan-empty" hidden>
-            <p>아직 계획이 없습니다. 지금 실제로 하고 있는 일 하나를 골라 첫 계획을 세워 보세요.</p>
+            <p class="muted">No plans yet. Pick one thing you are actually working on and set up your first plan.</p>
           </div>
           <div id="plan-view"></div>
           <form id="plan-form" hidden>
-            <h2 id="plan-form-title">새 계획</h2>
+            <h2 id="plan-form-title">New plan</h2>
             <p id="plan-form-carried" class="carried" hidden></p>
             <input type="hidden" name="carried_from_reflection_id">
-            <label>계획 이름 <input name="title" required maxlength="200"></label>
+            <label>Plan name <input name="title" required maxlength="200"></label>
             <div class="row">
-              <label>시작일 <input type="date" name="start_date" required></label>
-              <label>종료일 <input type="date" name="end_date" required></label>
-            </div>
-            <div class="row">
-              <label>우선순위
-                <select name="priority"><option value="1">높음</option><option value="2" selected>보통</option><option value="3">낮음</option></select>
+              <label class="grow">Start date <input type="date" name="start_date" required></label>
+              <label class="grow">End date <input type="date" name="end_date" required></label>
+              <label class="grow">Priority
+                <select name="priority"><option value="1">High</option><option value="2" selected>Normal</option><option value="3">Low</option></select>
               </label>
-              <label>예상 시간(분) <input type="number" name="estimated_minutes" min="0" required></label>
             </div>
-            <label>성공 기준 <textarea name="success_criteria" required maxlength="1000" rows="2"></textarea></label>
-            <label id="change-note-label" hidden>무엇을 왜 고치나요 <input name="change_note" maxlength="300"></label>
+            <label>Completion criteria
+              <textarea name="success_criteria" required maxlength="1000" rows="4" placeholder="Describe what “done” looks like for this plan."></textarea>
+            </label>
+            <label id="change-note-label" hidden>What are you changing, and why? <input name="change_note" maxlength="300"></label>
             <div class="row">
-              <button type="submit">저장</button>
-              <button type="button" class="ghost" id="plan-form-cancel">취소</button>
+              <button type="submit">Save</button>
+              <button type="button" class="ghost" id="plan-form-cancel">Cancel</button>
             </div>
           </form>
         </div>
         <div class="page right">
-          <h2>계획 고친 이력</h2>
-          <p class="muted small">고쳐도 이전 판은 지워지지 않습니다.</p>
-          <div id="plan-versions"></div>
+          <h2>Revision history</h2>
+          <p class="muted small">Editing a plan never erases earlier versions.</p>
+          <div id="plan-versions" class="fill scroll"></div>
         </div>
       </section>
 
-      <!-- ========== 할 일 ========== -->
+      <!-- ========== To-dos ========== -->
       <section id="tab-todos" class="tab spread" hidden>
         <div class="page left">
           <form id="todo-form">
-            <h2 id="todo-form-title">할 일 추가</h2>
+            <h2 id="todo-form-title">Add a to-do</h2>
             <input type="hidden" name="id">
-            <label>할 일 <input name="title" required maxlength="200"></label>
+            <label>To-do <input name="title" required maxlength="200"></label>
             <div class="row">
-              <label>마감일 <input type="date" name="due_date"></label>
-              <label>우선순위
-                <select name="priority"><option value="1">높음</option><option value="2" selected>보통</option><option value="3">낮음</option></select>
+              <label class="grow">Due date <input type="date" name="due_date"></label>
+              <label class="grow">Priority
+                <select name="priority"><option value="1">High</option><option value="2" selected>Normal</option><option value="3">Low</option></select>
               </label>
-              <label>예상(분) <input type="number" name="estimated_minutes" min="0" value="30"></label>
+              <label class="grow">Estimate (min) <input type="number" name="estimated_minutes" min="0" value="30"></label>
             </div>
-            <label>태그 (쉼표로 구분) <input name="tags" placeholder="예: 공부, 복습"></label>
-            <label>메모 <input name="note" maxlength="2000"></label>
+            <label>Tags (comma-separated) <input name="tags" placeholder="e.g. study, review"></label>
+            <label>Note <input name="note" maxlength="2000"></label>
             <div class="row">
-              <button type="submit" id="todo-submit">추가</button>
-              <button type="button" class="ghost" id="todo-cancel" hidden>고치기 취소</button>
+              <button type="submit" id="todo-submit">Add</button>
+              <button type="button" class="ghost" id="todo-cancel" hidden>Cancel edit</button>
             </div>
           </form>
-          <div id="todo-detail" hidden></div>
+          <div id="todo-detail" class="fill scroll" hidden></div>
         </div>
         <div class="page right">
           <div class="row toolbar">
-            <label class="grow">검색 <input id="f-q" type="search" placeholder="제목·메모·태그"></label>
-            <label>상태
+            <label class="grow">Search <input id="f-q" type="search" placeholder="Title, note, tag"></label>
+            <label>Status
               <select id="f-status">
-                <option value="">전체</option><option value="open">진행 중</option><option value="done">완료</option>
-                <option value="overdue">지연</option><option value="blocked">막힘 있음</option>
+                <option value="">All</option><option value="open">Open</option><option value="done">Done</option>
+                <option value="overdue">Overdue</option><option value="blocked">Blocked</option>
               </select>
+            </label>
+            <label>Priority
+              <select id="f-priority"><option value="">All</option><option value="1">High</option><option value="2">Normal</option><option value="3">Low</option></select>
             </label>
           </div>
           <div class="row toolbar">
-            <label>우선순위
-              <select id="f-priority"><option value="">전체</option><option value="1">높음</option><option value="2">보통</option><option value="3">낮음</option></select>
-            </label>
-            <label>태그 <select id="f-tag"><option value="">전체</option></select></label>
-            <label>정렬
+            <label class="grow">Tag <select id="f-tag"><option value="">All</option></select></label>
+            <label class="grow">Sort by
               <select id="f-sort">
-                <option value="due">마감일</option><option value="priority">우선순위</option>
-                <option value="estimate">예상 시간</option><option value="created">만든 시각</option><option value="title">제목</option>
+                <option value="due">Due date</option><option value="priority">Priority</option>
+                <option value="estimate">Estimate</option><option value="created">Created</option><option value="title">Title</option>
               </select>
             </label>
-            <label>방향 <select id="f-dir"><option value="asc">오름차순</option><option value="desc">내림차순</option></select></label>
+            <label class="grow">Order <select id="f-dir"><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
           </div>
           <p class="muted small" id="sort-explain"></p>
           <p class="filter-note" id="evidence-filter" hidden></p>
-          <ul class="checklist big" id="todo-list"></ul>
+          <ul class="checklist fill scroll" id="todo-list"></ul>
         </div>
       </section>
 
-      <!-- ========== 실제로 한 일 ========== -->
+      <!-- ========== Done (work log) ========== -->
       <section id="tab-logs" class="tab spread" hidden>
         <div class="page left">
           <form id="log-form">
-            <h2>실제로 한 일 적기</h2>
-            <p class="muted small">계획과 따로 저장됩니다. 저장해도 계획·할 일의 예상 값은 바뀌지 않습니다. 시각은 서울 시간으로 적습니다.</p>
-            <label>어느 할 일 <select name="todo_id" id="log-todo" required></select></label>
+            <h2>Log what you did</h2>
+            <p class="muted small">Logs are stored apart from the plan — saving one never changes the plan's or to-do's estimates. Enter times in Korea time (KST).</p>
+            <label>To-do <select name="todo_id" id="log-todo" required></select></label>
             <div class="row">
-              <label>시작 <input type="datetime-local" name="started_at" required></label>
-              <label>끝 <input type="datetime-local" name="ended_at" required></label>
+              <label class="grow">Start <input type="datetime-local" name="started_at" required></label>
+              <label class="grow">End <input type="datetime-local" name="ended_at" required></label>
             </div>
-            <label>실제 걸린 시간(분) <input type="number" name="actual_minutes" min="0" placeholder="비우면 끝−시작으로 자동 계산"></label>
-            <label>막혔던 이유 (없으면 비움) <input name="blocker" maxlength="1000"></label>
-            <button type="submit">기록 저장</button>
+            <label>Actual time (min) <input type="number" name="actual_minutes" min="0" placeholder="Leave blank to use End − Start"></label>
+            <label>What blocked you? (leave blank if nothing) <input name="blocker" maxlength="1000"></label>
+            <button type="submit">Save log</button>
           </form>
         </div>
         <div class="page right">
-          <h2>실행 기록</h2>
+          <h2>Work log</h2>
           <p class="filter-note" id="log-evidence-filter" hidden></p>
-          <ul class="loglist" id="log-list"></ul>
+          <ul class="loglist fill scroll" id="log-list"></ul>
         </div>
       </section>
 
-      <!-- ========== 돌아보기 ========== -->
+      <!-- ========== Review ========== -->
       <section id="tab-review" class="tab spread" hidden>
         <div class="page left">
-          <h2>돌아보기</h2>
+          <h2>Review</h2>
           <p class="muted small" id="review-meta"></p>
           <div class="row">
-            <label>마감일 기간 <input type="date" id="r-from"></label>
-            <label>~ <input type="date" id="r-to"></label>
-            <button type="button" class="ghost small" id="r-clear">기간 지우기</button>
+            <label class="grow">Due from <input type="date" id="r-from"></label>
+            <label class="grow">to <input type="date" id="r-to"></label>
+            <button type="button" class="ghost small" id="r-clear">Clear dates</button>
           </div>
-          <p class="muted small">숫자를 누르면 그 숫자가 나온 기록으로 갑니다. 시간 단위는 모두 분. 지연 = 완료 안 됐고 마감일이 서울 기준 오늘보다 앞선 할 일.</p>
+          <p class="muted small">Click a number to see the records behind it. All times are in minutes. Overdue = not done and due before today (Korea time).</p>
           <div class="stats" id="stats"></div>
         </div>
         <div class="page right">
           <form id="reflect-form">
-            <h2>돌아보기 남기기</h2>
-            <label>돌아본 내용 <textarea name="note" rows="4" maxlength="2000" class="lined small-lines"></textarea></label>
-            <label>다음 계획으로 넘길 고칠 점 한 줄 <input name="improvement" required maxlength="300"></label>
-            <button type="submit">돌아보기 저장</button>
+            <h2>Write a reflection</h2>
+            <label>Reflection <textarea name="note" rows="3" maxlength="2000"></textarea></label>
+            <label>One thing to improve in the next plan <input name="improvement" required maxlength="300"></label>
+            <button type="submit">Save reflection</button>
           </form>
-          <h3 class="section-label">지난 돌아보기</h3>
-          <div id="reflections"></div>
+          <h3 class="section-label">Past reflections</h3>
+          <div id="reflections" class="fill scroll"></div>
         </div>
       </section>
 
-      <!-- ========== 내보내기 ========== -->
+      <!-- ========== Export ========== -->
       <section id="tab-export" class="tab spread" hidden>
         <div class="page left">
-          <h2>내 자료 전체 내보내기</h2>
-          <p>계획·계획 이력·할 일·태그·완료 기록·실행 기록·돌아보기·날짜별 메모를 JSON 파일 하나로 받습니다.</p>
-          <a class="button" href="/api/export" download>JSON 파일로 내보내기</a>
+          <h2>Export all data</h2>
+          <p>Download your plans, plan history, to-dos, tags, completions, work logs, reflections and daily notes as a single JSON file.</p>
+          <p><a class="button" href="/api/export" download>Export as JSON</a></p>
         </div>
         <div class="page right">
-          <h2>저장 규칙</h2>
+          <h2>Storage rules</h2>
           <ul class="plain">
-            <li>자료는 서버의 SQLite 데이터베이스에 저장됩니다.</li>
-            <li>시각은 UTC로 저장하고 서울 시간으로 보여 줍니다.</li>
-            <li>날짜는 서울 기준 달력 날짜입니다.</li>
-            <li>시간 길이는 모두 분 단위입니다.</li>
+            <li>Data is stored in a SQLite database on the server.</li>
+            <li>Timestamps are stored in UTC and shown in Korea time (KST, UTC+9).</li>
+            <li>Dates are calendar dates in Korea time.</li>
+            <li>All durations are in minutes.</li>
           </ul>
         </div>
       </section>
     </div>
+
+    <nav class="ribbons" id="tabs" aria-label="Diary sections">
+      <button type="button" data-tab="calendar">Calendar</button>
+      <button type="button" data-tab="plan">Plan</button>
+      <button type="button" data-tab="todos">To-dos</button>
+      <button type="button" data-tab="logs">Done</button>
+      <button type="button" data-tab="review">Review</button>
+      <button type="button" data-tab="export">Export</button>
+    </nav>
   </div>
 
   <p id="toast" class="toast" hidden></p>

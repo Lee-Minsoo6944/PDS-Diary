@@ -5,8 +5,8 @@
 - 배포(WSGI): 이 파일의 `application` 을 WSGI 진입점으로 씁니다.
 
 시간 규칙
-- 시각(…_at)은 UTC ISO-8601 문자열 'YYYY-MM-DDTHH:MM:SSZ' 로 저장하고, 화면에서 서울 시간으로 보여 줍니다.
-- 날짜(…_date)는 서울 기준 달력 날짜 'YYYY-MM-DD' 로 저장합니다(시간대 없음).
+- 시각(…_at)은 UTC ISO-8601 문자열 'YYYY-MM-DDTHH:MM:SSZ' 로 저장하고, 화면에서 대한민국 시간(KST)으로 보여 줍니다.
+- 날짜(…_date)는 대한민국 기준 달력 날짜 'YYYY-MM-DD' 로 저장합니다(시간대 없음).
 - 시간 길이는 모두 '분(정수)' 단위로 저장하고 보여 줍니다.
 """
 import json
@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS day_notes (
 );
 """
 
-PRIORITY_LABEL = {1: "높음", 2: "보통", 3: "낮음"}
+PRIORITY_LABEL = {1: "High", 2: "Normal", 3: "Low"}
 
 
 # ---------------------------------------------------------------- 공통 도구
@@ -194,12 +194,12 @@ def req_text(body, key, max_len=500, required=True):
     if v is None:
         v = ""
     if not isinstance(v, str):
-        raise ApiError(400, f"{key}: 글자여야 합니다")
+        raise ApiError(400, f"{key}: must be text")
     v = v.strip()
     if required and not v:
-        raise ApiError(400, f"{key}: 비어 있으면 안 됩니다")
+        raise ApiError(400, f"{key}: must not be empty")
     if len(v) > max_len:
-        raise ApiError(400, f"{key}: {max_len}자 이하로 적어 주세요")
+        raise ApiError(400, f"{key}: must be {max_len} characters or fewer")
     return v
 
 
@@ -208,9 +208,9 @@ def req_int(body, key, lo=0, hi=100000, default=None):
     if isinstance(v, str) and v.strip().lstrip("-").isdigit():
         v = int(v.strip())
     if isinstance(v, bool) or not isinstance(v, int):
-        raise ApiError(400, f"{key}: 정수여야 합니다")
+        raise ApiError(400, f"{key}: must be a whole number")
     if not lo <= v <= hi:
-        raise ApiError(400, f"{key}: {lo}~{hi} 사이여야 합니다")
+        raise ApiError(400, f"{key}: must be between {lo} and {hi}")
     return v
 
 
@@ -221,14 +221,14 @@ def req_date(body, key, required=True):
     v = body.get(key)
     if v in (None, ""):
         if required:
-            raise ApiError(400, f"{key}: 날짜가 필요합니다")
+            raise ApiError(400, f"{key}: a date is required")
         return None
     if not isinstance(v, str) or not DATE_RE.match(v):
-        raise ApiError(400, f"{key}: YYYY-MM-DD 형식이어야 합니다")
+        raise ApiError(400, f"{key}: must be in YYYY-MM-DD format")
     try:
         date.fromisoformat(v)
     except ValueError:
-        raise ApiError(400, f"{key}: 없는 날짜입니다")
+        raise ApiError(400, f"{key}: not a valid date")
     return v
 
 
@@ -236,13 +236,13 @@ def req_instant(body, key):
     """시간대가 붙은 ISO 시각 → UTC 'Z' 문자열."""
     v = body.get(key)
     if not isinstance(v, str) or not v:
-        raise ApiError(400, f"{key}: 시각이 필요합니다")
+        raise ApiError(400, f"{key}: a time is required")
     try:
         dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
     except ValueError:
-        raise ApiError(400, f"{key}: ISO-8601 시각이어야 합니다")
+        raise ApiError(400, f"{key}: must be an ISO-8601 time")
     if dt.tzinfo is None:
-        raise ApiError(400, f"{key}: 시간대(+09:00 또는 Z)가 있어야 합니다")
+        raise ApiError(400, f"{key}: must include a time zone (+09:00 or Z)")
     return dt.astimezone(timezone.utc).replace(microsecond=0)
 
 
@@ -252,24 +252,24 @@ def parse_tags(v):
     if isinstance(v, str):
         v = v.split(",")
     if not isinstance(v, list):
-        raise ApiError(400, "tags: 목록이어야 합니다")
+        raise ApiError(400, "tags: must be a list")
     out = []
     for t in v:
         if not isinstance(t, str):
-            raise ApiError(400, "tags: 글자여야 합니다")
+            raise ApiError(400, "tags: must be text")
         t = t.strip().lstrip("#")
         if t and t not in out:
             if len(t) > 30:
-                raise ApiError(400, "tags: 태그는 30자 이하")
+                raise ApiError(400, "tags: each tag must be 30 characters or fewer")
             out.append(t)
     if len(out) > 10:
-        raise ApiError(400, "tags: 10개 이하")
+        raise ApiError(400, "tags: at most 10 tags")
     return out
 
 
 def get_id(s):
     if not s.isdigit():
-        raise ApiError(404, "없는 주소입니다")
+        raise ApiError(404, "Not found")
     return int(s)
 
 
@@ -277,7 +277,11 @@ def get_id(s):
 PLAN_FIELDS = ("title", "start_date", "end_date", "priority", "success_criteria", "estimated_minutes")
 
 
-def read_plan_body(body):
+def read_plan_body(body, fallback_minutes=0):
+    # 계획에는 이제 예상 시간을 따로 적지 않고, 완료 기준(글)만 적습니다.
+    # 예전 자료와 맞추려고 열은 남겨 두고, 값이 오지 않으면 기존 값(새 계획은 0)을 씁니다.
+    if body.get("estimated_minutes") in (None, ""):
+        body = {**body, "estimated_minutes": fallback_minutes}
     p = {
         "title": req_text(body, "title", 200),
         "start_date": req_date(body, "start_date"),
@@ -287,14 +291,14 @@ def read_plan_body(body):
         "estimated_minutes": req_int(body, "estimated_minutes", 0, 1000000),
     }
     if p["end_date"] < p["start_date"]:
-        raise ApiError(400, "end_date: 시작일보다 앞설 수 없습니다")
+        raise ApiError(400, "end_date: cannot be before the start date")
     return p
 
 
 def plan_row(conn, plan_id):
     r = conn.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
     if not r:
-        raise ApiError(404, "계획이 없습니다")
+        raise ApiError(404, "Plan not found")
     return dict(r)
 
 
@@ -331,7 +335,7 @@ def create_plan(conn, body):
     else:
         carried = req_int(body, "carried_from_reflection_id", 1, 10 ** 12)
         if not conn.execute("SELECT 1 FROM reflections WHERE id = ?", (carried,)).fetchone():
-            raise ApiError(400, "carried_from_reflection_id: 없는 돌아보기입니다")
+            raise ApiError(400, "carried_from_reflection_id: reflection not found")
     ts = now_utc()
     with tx(conn):
         cur = conn.execute(
@@ -343,16 +347,16 @@ def create_plan(conn, body):
         conn.execute(
             "INSERT INTO plan_versions (plan_id, version, title, start_date, end_date, priority,"
             " success_criteria, estimated_minutes, change_note, created_at) VALUES (?,1,?,?,?,?,?,?,?,?)",
-            (pid, *[p[k] for k in PLAN_FIELDS], "처음 세운 계획", ts))
+            (pid, *[p[k] for k in PLAN_FIELDS], "Original plan", ts))
     return plan_detail(conn, pid)
 
 
 def update_plan(conn, plan_id, body):
-    p = read_plan_body(body)
     note = req_text(body, "change_note", 300, required=False)
     ts = now_utc()
     with tx(conn):
         cur = plan_row(conn, plan_id)
+        p = read_plan_body(body, fallback_minutes=cur["estimated_minutes"])
         if all(cur[k] == p[k] for k in PLAN_FIELDS):
             return plan_detail(conn, plan_id)  # 바뀐 게 없으면 새 판을 만들지 않음
         ver = cur["current_version"] + 1
@@ -371,7 +375,7 @@ def update_plan(conn, plan_id, body):
 def todo_row(conn, todo_id, include_deleted=False):
     r = conn.execute("SELECT * FROM todos WHERE id = ?", (todo_id,)).fetchone()
     if not r or (r["deleted_at"] and not include_deleted):
-        raise ApiError(404, "할 일이 없습니다")
+        raise ApiError(404, "To-do not found")
     return r
 
 
@@ -518,7 +522,7 @@ def complete_todo(conn, todo_id, body):
         seen = conn.execute("SELECT todo_id FROM completions WHERE idempotency_key = ?", (key,)).fetchone()
         if seen:
             if seen[0] != todo_id:
-                raise ApiError(409, "다른 할 일에 이미 쓴 키입니다")
+                raise ApiError(409, "This key was already used for a different to-do")
             created = False
         elif t["status"] == "done":
             created = False
@@ -548,7 +552,7 @@ def reopen_todo(conn, todo_id):
 def create_log(conn, todo_id, body):
     start, end = req_instant(body, "started_at"), req_instant(body, "ended_at")
     if end < start:
-        raise ApiError(400, "ended_at: 시작 시각보다 앞설 수 없습니다")
+        raise ApiError(400, "ended_at: cannot be before the start time")
     computed = round((end - start).total_seconds() / 60)
     raw = body.get("actual_minutes")
     minutes = computed if raw in (None, "") else req_int(body, "actual_minutes", 0, 100000)
@@ -581,7 +585,7 @@ def list_logs(conn, qs):
 def delete_log(conn, log_id):
     with tx(conn):
         if conn.execute("DELETE FROM work_logs WHERE id = ?", (log_id,)).rowcount == 0:
-            raise ApiError(404, "실행 기록이 없습니다")
+            raise ApiError(404, "Work log not found")
     return {"ok": True, "id": log_id}
 
 
@@ -654,9 +658,9 @@ def get_note(conn, day):
 def put_note(conn, day, body):
     text = body.get("body", "")
     if not isinstance(text, str):
-        raise ApiError(400, "body: 글자여야 합니다")
+        raise ApiError(400, "body: must be text")
     if len(text) > 5000:
-        raise ApiError(400, "body: 5000자 이하로 적어 주세요")
+        raise ApiError(400, "body: must be 5000 characters or fewer")
     with tx(conn):
         conn.execute("INSERT INTO day_notes (note_date, body, updated_at) VALUES (?,?,?)"
                      " ON CONFLICT(note_date) DO UPDATE SET body = excluded.body, updated_at = excluded.updated_at",
@@ -674,7 +678,7 @@ def list_notes(conn, qs):
 # ---------------------------------------------------------------- 내보내기
 def export_all(conn):
     out = {"app": "plan-do-see-diary", "schema_version": SCHEMA_VERSION, "exported_at": now_utc(),
-           "time_rules": {"instants": "UTC ISO-8601 (Z)", "dates": "Asia/Seoul calendar date YYYY-MM-DD",
+           "time_rules": {"instants": "UTC ISO-8601 (Z)", "dates": "Korea (KST, UTC+9, Asia/Seoul) calendar date YYYY-MM-DD",
                           "durations": "minutes (integer)"}}
     for table in ("plans", "plan_versions", "todos", "todo_tags", "completions", "work_logs", "reflections", "day_notes"):
         out[table] = [dict(r) for r in conn.execute(f"SELECT * FROM {table} ORDER BY rowid")]
@@ -737,7 +741,7 @@ def route(method, path, qs, body, conn):
             return put_note(conn, day, body)
     if parts == ["export"] and method == "GET":
         return export_all(conn)
-    raise ApiError(404, "없는 주소입니다")
+    raise ApiError(404, "Not found")
 
 
 def respond(start_response, status, body_bytes, ctype, extra=()):
@@ -774,15 +778,15 @@ def application(environ, start_response):
             except ValueError:
                 length = 0
             if length > MAX_BODY:
-                raise ApiError(413, "보낸 내용이 너무 큽니다")
+                raise ApiError(413, "Request body is too large")
             raw = environ["wsgi.input"].read(length) if length else b""
             if raw:
                 try:
                     body = json.loads(raw.decode("utf-8"))
                 except (ValueError, UnicodeDecodeError):
-                    raise ApiError(400, "JSON 형식이 아닙니다")
+                    raise ApiError(400, "Body is not valid JSON")
                 if not isinstance(body, dict):
-                    raise ApiError(400, "JSON 객체여야 합니다")
+                    raise ApiError(400, "Body must be a JSON object")
         conn = connect()
         payload = route(method, path, qs, body, conn)
         if method == "POST" and not path.endswith(("/complete", "/reopen")):
@@ -793,11 +797,11 @@ def application(environ, start_response):
     except ApiError as e:
         status, payload = e.status, {"error": e.message}
     except sqlite3.IntegrityError as e:
-        status, payload = 409, {"error": "저장 규칙에 맞지 않습니다: " + str(e)}
+        status, payload = 409, {"error": "Violates a storage rule: " + str(e)}
     except Exception:  # 내부 정보는 응답에 싣지 않음
         import traceback
         traceback.print_exc()
-        status, payload = 500, {"error": "서버 오류가 났습니다"}
+        status, payload = 500, {"error": "Server error"}
     finally:
         if conn is not None:
             conn.close()
@@ -818,5 +822,5 @@ if __name__ == "__main__":
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8000"))
     with make_server(host, port, application, server_class=ThreadingWSGIServer) as srv:
-        print(f"플랜두씨 다이어리: http://{host}:{port}  (DB: {DB_PATH})")
+        print(f"Plan-Do-See Diary: http://{host}:{port}  (DB: {DB_PATH})")
         srv.serve_forever()

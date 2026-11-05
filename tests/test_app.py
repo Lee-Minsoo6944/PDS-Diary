@@ -127,7 +127,7 @@ class PDS(unittest.TestCase):
         plan_before = ok("GET", f"/api/plans/{self.pid}")
         w = ok("POST", f"/api/todos/{t['id']}/logs", {"started_at": "2026-11-03T21:00:00+09:00",
                                                       "ended_at": "2026-11-03T21:45:00+09:00", "blocker": "졸림"})
-        self.assertEqual(w["started_at"], "2026-11-03T12:00:00Z")   # C23 (서울→UTC)
+        self.assertEqual(w["started_at"], "2026-11-03T12:00:00Z")   # C23 (KST→UTC)
         self.assertEqual(w["ended_at"], "2026-11-03T12:45:00Z")     # C24
         self.assertEqual(w["actual_minutes"], 45)                    # C25
         self.assertEqual(w["blocker"], "졸림")                       # C26
@@ -195,10 +195,23 @@ class PDS(unittest.TestCase):
         self.assertNotIn(".innerHTML", js)
         self.assertNotIn("insertAdjacentHTML", js)
 
-    def test_C82_notice_on_first_screen(self):
+    def test_first_screen_english_without_login_notice(self):
         s, html, _ = call("GET", "/")
-        self.assertIn("지금은 로그인이 없어 링크를 아는 사람은 누구나 볼 수 있습니다. 남이 봐도 괜찮은 내용만 넣으세요",
-                      html.decode("utf-8"))
+        page = html.decode("utf-8")
+        self.assertNotIn("지금은 로그인이 없어", page)
+        self.assertIn('lang="en"', page)
+        self.assertIn("Completion criteria", page)
+
+    def test_plan_without_estimate_keeps_old_value(self):
+        # 계획은 완료 기준(글)만 적고, 예상 시간은 보내지 않아도 됩니다.
+        p = ok("POST", "/api/plans", {"title": "글 기준", "start_date": D(0), "end_date": D(3), "priority": 2,
+                                      "success_criteria": "보고서 초안을 끝까지 쓴다"})
+        self.assertEqual(p["estimated_minutes"], 0)
+        # 예상 시간을 보내지 않고 고쳐도, 예전 계획의 값은 그대로 남습니다.
+        u = ok("PUT", f"/api/plans/{self.pid}", {"title": "테스트 계획", "start_date": D(-7), "end_date": D(7),
+                                                 "priority": 1, "success_criteria": "글로 바꿈"})
+        self.assertEqual(u["estimated_minutes"], 600)
+        self.assertEqual(u["versions"][-1]["success_criteria"], "글로 바꿈")
 
     def test_calendar_range_and_day_notes(self):
         a = self.todo(title="달력 안", due_date=D(1))

@@ -247,6 +247,10 @@ class PDS(unittest.TestCase):
         # 계획에는 날짜·우선순위를 적지 않음 — 날짜는 할 일마다 정함
         p = ok("POST", "/api/plans", {"title": "날짜 없는 계획", "success_criteria": "끝까지 한다"})
         self.assertEqual((p["start_date"], p["end_date"], p["priority"]), (TODAY, TODAY, 2))
+        # 계획 목록은 번호 오름차순
+        ids = [x["id"] for x in ok("GET", "/api/plans")]
+        self.assertEqual(ids, sorted(ids))
+        self.assertEqual(ids[-1], p["id"])
         # 고칠 때 날짜·우선순위를 보내지 않으면 원래 값이 그대로 (예전 계획도 안전)
         u = ok("PUT", f"/api/plans/{self.pid}", {"title": "이름만 바꿈", "success_criteria": "주 3회"})
         self.assertEqual((u["start_date"], u["end_date"], u["priority"]), (D(-7), D(7), 1))

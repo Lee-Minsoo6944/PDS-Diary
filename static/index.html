@@ -12,14 +12,34 @@
 <body>
   <header class="desk-head">
     <h1 class="brand">Plan <i>·</i> Do <i>·</i> See <span>Diary</span></h1>
-    <div class="planbar">
+    <div class="planbar" id="planbar" hidden>
       <label class="inline">Plan <select id="plan-select"></select></label>
       <button id="btn-new-plan" type="button" class="ghost light">+ New plan</button>
       <span class="today" id="today"></span>
+      <span class="who"><span id="who-name"></span> <button id="btn-logout" type="button" class="ghost light small">Log out</button></span>
     </div>
   </header>
 
-  <div class="book-wrap">
+  <!-- ========== Sign in (first screen) ========== -->
+  <main class="auth-wrap" id="auth" hidden>
+    <div class="auth-card">
+      <h2 id="auth-title">Log in</h2>
+      <p class="muted small">Your diary is private. Log in to see your own plans and notes.</p>
+      <div class="auth-switch" role="tablist">
+        <button type="button" id="auth-tab-login" class="on" role="tab">Log in</button>
+        <button type="button" id="auth-tab-signup" role="tab">Sign up</button>
+      </div>
+      <form id="auth-form" autocomplete="on">
+        <label>Username <input name="username" autocomplete="username" required minlength="3" maxlength="30" pattern="[A-Za-z0-9_.\-]{3,30}" title="3–30 letters, numbers, dot, dash or underscore"></label>
+        <label>Password <input name="password" type="password" autocomplete="current-password" required minlength="8" maxlength="128"></label>
+        <p class="muted small" id="auth-hint" hidden>Use 3–30 letters, numbers, dot, dash or underscore for the username, and at least 8 characters for the password.</p>
+        <p class="auth-error" id="auth-error" role="alert" hidden></p>
+        <button type="submit" id="auth-submit">Log in</button>
+      </form>
+    </div>
+  </main>
+
+  <div class="book-wrap" id="diary" hidden>
     <div class="book">
       <!-- ========== Calendar ========== -->
       <section id="tab-calendar" class="tab spread" hidden>
@@ -181,6 +201,9 @@
           </div>
           <p class="muted small">Click a number to see the records behind it. All times are in minutes. Overdue = not done and due before today (Korea time).</p>
           <div class="stats" id="stats"></div>
+          <h3 class="section-label">Day by day <span class="muted small" id="daily-range"></span></h3>
+          <div class="fill scroll"><table class="list daily" id="daily"></table></div>
+          <p class="muted small" id="daily-rules"></p>
         </div>
         <div class="page right">
           <form id="reflect-form">
@@ -194,21 +217,36 @@
         </div>
       </section>
 
-      <!-- ========== Export ========== -->
-      <section id="tab-export" class="tab spread" hidden>
+      <!-- ========== Account ========== -->
+      <section id="tab-account" class="tab spread" hidden>
         <div class="page left">
-          <h2>Export all data</h2>
-          <p>Download your plans, plan history, to-dos, tags, completions, work logs, reflections and daily notes as a single JSON file.</p>
+          <h2>Export my data</h2>
+          <p>Download your own plans, plan history, to-dos, tags, completions, work logs, reflections and daily notes as a single JSON file. Other people's data is never included.</p>
           <p><a class="button" href="/api/export" download>Export as JSON</a></p>
+          <h3 class="section-label">Storage rules</h3>
+          <ul class="plain small">
+            <li>Data is stored in a SQLite database on the server, separately for each account.</li>
+            <li>Timestamps are stored in UTC and shown in Korea time (KST, UTC+9). Dates are Korea calendar dates.</li>
+            <li>All durations are in minutes.</li>
+            <li>Passwords are stored only as scrypt hashes. You stay logged in for 7 days unless you log out.</li>
+          </ul>
         </div>
         <div class="page right">
-          <h2>Storage rules</h2>
-          <ul class="plain">
-            <li>Data is stored in a SQLite database on the server.</li>
-            <li>Timestamps are stored in UTC and shown in Korea time (KST, UTC+9).</li>
-            <li>Dates are calendar dates in Korea time.</li>
-            <li>All durations are in minutes.</li>
-          </ul>
+          <h2>Account</h2>
+          <p class="muted small">Signed in as <b id="acct-name"></b>.</p>
+          <form id="pw-form">
+            <h3 class="section-label">Change password</h3>
+            <label>Current password <input name="current_password" type="password" autocomplete="current-password" required></label>
+            <label>New password <input name="new_password" type="password" autocomplete="new-password" required minlength="8" maxlength="128"></label>
+            <p class="muted small">Changing your password logs out every other browser.</p>
+            <button type="submit">Change password</button>
+          </form>
+          <form id="del-form">
+            <h3 class="section-label">Delete account</h3>
+            <p class="warn">Deleting your account permanently deletes <b>all</b> your plans, to-dos, work logs, reflections and notes. This cannot be undone — export your data first if you want a copy.</p>
+            <label>Type your password to confirm <input name="password" type="password" autocomplete="current-password" required></label>
+            <button type="submit" class="danger-fill">Delete my account and all my data</button>
+          </form>
         </div>
       </section>
     </div>
@@ -219,7 +257,7 @@
       <button type="button" data-tab="todos">To-dos</button>
       <button type="button" data-tab="logs">Done</button>
       <button type="button" data-tab="review">Review</button>
-      <button type="button" data-tab="export">Export</button>
+      <button type="button" data-tab="account">Account</button>
     </nav>
   </div>
 

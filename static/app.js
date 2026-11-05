@@ -14,7 +14,7 @@ const fmtKST = new Intl.DateTimeFormat("en-CA", {
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 const S = {
-  plans: [], planId: null, plan: null, tab: "calendar", ev: null, today: "", completeKeys: new Map(), editingPlan: false,
+  user: null, plans: [], planId: null, plan: null, tab: "calendar", ev: null, today: "", completeKeys: new Map(), editingPlan: false,
   month: "", day: "", memo: { day: "", timer: null, dirty: false }, dayPlan: { day: "", id: null },
 };
 const PLAN_COLORS = 6; // matches .pc0 … .pc5 in style.css
@@ -53,11 +53,15 @@ function toast(msg, bad = false) {
   clearTimeout(toast.timer); toast.timer = setTimeout(() => { t.hidden = true; }, 3500);
 }
 async function api(method, url, body) {
+  const headers = {};
+  if (body) headers["Content-Type"] = "application/json";
+  if (method !== "GET") headers["X-PDS"] = "1"; // the server rejects writes without it (blocks cross-site requests)
   const res = await fetch(url, {
-    method, headers: body ? { "Content-Type": "application/json" } : {},
+    method, headers, credentials: "same-origin",
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && !url.startsWith("/api/auth/")) { showAuth("Your session has ended. Please log in again."); }
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;
 }
@@ -66,7 +70,9 @@ function formData(form) { return Object.fromEntries(new FormData(form).entries()
 // ---------------------------------------------------------------- URL hash ↔ state
 function readHash() {
   const p = new URLSearchParams(location.hash.slice(1));
-  return { plan: Number(p.get("plan")) || null, tab: p.get("tab") || "calendar", ev: p.get("ev") || null };
+  let tab = p.get("tab") || "calendar";
+  if (tab === "export") tab = "account"; // old links
+  return { plan: Number(p.get("plan")) || null, tab, ev: p.get("ev") || null };
 }
 function writeHash() {
   const p = new URLSearchParams();
@@ -107,12 +113,13 @@ async function render() {
   for (const s of document.querySelectorAll(".tab")) s.hidden = s.id !== "tab-" + S.tab;
   $("#plan-select").value = S.planId ?? "";
   S.plan = S.planId ? await api("GET", `/api/plans/${S.planId}`) : null;
-  if (!S.plan && !["plan", "export", "calendar"].includes(S.tab)) { S.tab = "plan"; return render(); }
+  if (!S.plan && !["plan", "account", "calendar"].includes(S.tab)) { S.tab = "plan"; return render(); }
   if (S.tab === "calendar") await renderCalendar();
   if (S.tab === "plan") renderPlan();
   if (S.tab === "todos") await renderTodos();
   if (S.tab === "logs") await renderLogs();
   if (S.tab === "review") await renderReview();
+  if (S.tab === "account") $("#acct-name").textContent = S.user ? S.user.username : "";
 }
 
 // ---- 1. Plan
@@ -356,6 +363,30 @@ function reviewQuery() {
   if ($("#r-to").value) p.set("to", $("#r-to").value);
   return p;
 }
+// Day-by-day table for the 5-day record: the same rule is applied to every day (see daily.rules).
+function renderDaily(d) {
+  $("#daily-range").textContent = `${d.from} – ${d.to} · ${d.days} day${d.days === 1 ? "" : "s"}`;
+  const t = clear($("#daily"));
+  t.append(h("thead", {}, h("tr", {}, ["Date (KST)", "Logs", "Actual (min)", "Done", "Notes"].map((x) => h("th", {}, x)))));
+  const tb = h("tbody");
+  for (const r of d.rows) {
+    const notes = [r.duplicates ? `${r.duplicates} duplicate ignored` : null, r.outliers ? `${r.outliers} over 720 min` : null]
+      .filter(Boolean).join(" · ");
+    const wd = WEEK[fromYmd(r.date).getUTCDay()].slice(0, 3);
+    tb.append(h("tr", { class: r.logs || r.done ? null : "empty" },
+      h("td", {}, `${r.date} ${wd}`), h("td", { class: "n" }, r.logs), h("td", { class: "n" }, r.actual_minutes),
+      h("td", { class: "n" }, r.done), h("td", { class: "muted" }, notes)));
+  }
+  tb.append(h("tr", { class: "sum" }, h("td", {}, "Total"), h("td", { class: "n" }, d.total.logs),
+    h("td", { class: "n" }, d.total.actual_minutes), h("td", { class: "n" }, d.total.done), h("td", {})));
+  tb.append(h("tr", { class: "sum" }, h("td", {}, `Average per day (÷${d.days})`), h("td", {}),
+    h("td", { class: "n" }, d.average.actual_minutes.toFixed(1)), h("td", { class: "n" }, d.average.done.toFixed(1)), h("td", {})));
+  t.append(tb);
+  const R = d.rules;
+  $("#daily-rules").textContent = `Rules: ${R.date}; ${R.missing}; ${R.duplicates}; ${R.outliers}; ${R.rounding}; weeks start on ${R.week_starts}.` +
+    " Set “Due from / to” to choose the days.";
+}
+
 async function renderReview() {
   const r = await api("GET", `/api/plans/${S.planId}/review?${reviewQuery()}`);
   $("#review-meta").textContent = `#${r.plan_id} ${r.plan_title} · Today (KST) ${r.today_kst}` +
@@ -369,6 +400,7 @@ async function renderReview() {
       title: `Click to see the ${target === "logs" ? "work logs" : "to-dos"} behind this number`, onclick: () => go(target, k) },
       h("span", { class: "num" }, k === "diff_minutes" && v > 0 ? "+" + v : v), h("span", { class: "lbl" }, label)));
   }
+  renderDaily(r.daily);
   const list = clear($("#reflections"));
   if (!S.plan.reflections.length) list.append(h("p", { class: "muted" }, "No reflections yet."));
   for (const rf of S.plan.reflections) {
@@ -504,7 +536,7 @@ async function renderDay() {
 
 async function saveMemo() {
   clearTimeout(S.memo.timer);
-  if (!S.memo.dirty) return;
+  if (!S.memo.dirty || !S.user) return;
   const day = S.memo.day, body = $("#memo").value;
   S.memo.dirty = false;
   $("#memo-status").textContent = "saving…";
@@ -532,7 +564,7 @@ function bind() {
   });
   $("#memo").addEventListener("blur", saveMemo);
   $("#day-plan").addEventListener("change", (e) => { S.dayPlan = { day: S.day, id: Number(e.target.value) }; });
-  window.addEventListener("beforeunload", (e) => { if (S.memo.dirty) { saveMemo(); e.preventDefault(); } });
+  window.addEventListener("beforeunload", (e) => { if (S.user && S.memo.dirty) { saveMemo(); e.preventDefault(); } });
   $("#day-add").addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = e.target, d = formData(f);
@@ -603,6 +635,7 @@ function bind() {
   });
 
   const fromHash = async () => {
+    if (!S.user) return;
     const st = readHash();
     if ((st.plan || S.planId) === S.planId && st.tab === S.tab && st.ev === S.ev) return; // already on that screen
     if (st.plan) S.planId = st.plan;
@@ -613,16 +646,93 @@ function bind() {
   window.addEventListener("hashchange", fromHash);
 }
 
-async function start() {
-  bind();
-  const meta = await api("GET", "/api/meta");
-  $("#today").textContent = `Today (KST) · ${meta.today_kst}`;
-  S.today = meta.today_kst; S.day = S.today; S.month = S.today.slice(0, 7);
+// ---------------------------------------------------------------- sign in / sign up / log out
+const AUTH = { mode: "login" };
+function setAuthMode(mode) {
+  AUTH.mode = mode;
+  const signup = mode === "signup";
+  $("#auth-title").textContent = signup ? "Create an account" : "Log in";
+  $("#auth-submit").textContent = signup ? "Sign up" : "Log in";
+  $("#auth-tab-login").classList.toggle("on", !signup);
+  $("#auth-tab-signup").classList.toggle("on", signup);
+  $("#auth-hint").hidden = !signup;
+  $("#auth-form").elements.password.autocomplete = signup ? "new-password" : "current-password";
+  $("#auth-error").hidden = true;
+}
+function showAuth(message = "") {
+  S.user = null; S.plans = []; S.plan = null; S.planId = null;
+  $("#diary").hidden = true; $("#planbar").hidden = true; $("#auth").hidden = false;
+  clear($("#cal-grid")); clear($("#day-todos")); clear($("#todo-list")); clear($("#log-list")); $("#memo").value = "";
+  const err = $("#auth-error");
+  err.textContent = message; err.hidden = !message;
+  $("#auth-form").elements.password.value = "";
+  $("#auth-form").elements.username.focus();
+}
+async function enterDiary(user) {
+  S.user = user;
+  $("#auth").hidden = true; $("#diary").hidden = false; $("#planbar").hidden = false;
+  $("#who-name").textContent = user.username;
   const st = readHash();
   S.planId = st.plan; S.tab = st.tab; S.ev = st.ev;
+  S.memo.day = ""; S.day = S.today; S.month = S.today.slice(0, 7);
   await loadPlans();
   history.replaceState(null, "", location.pathname + location.search);
   writeHash();
   await render();
+}
+function bindAuth() {
+  $("#auth-tab-login").addEventListener("click", () => setAuthMode("login"));
+  $("#auth-tab-signup").addEventListener("click", () => setAuthMode("signup"));
+  $("#auth-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target, d = formData(f);
+    const btn = $("#auth-submit");
+    btn.disabled = true;
+    try {
+      const r = await api("POST", AUTH.mode === "signup" ? "/api/auth/signup" : "/api/auth/login",
+        { username: d.username, password: d.password });
+      f.elements.password.value = "";
+      if (AUTH.mode === "signup") toast(`Welcome, ${r.user.username}! Create your first plan to get started.`);
+      await enterDiary(r.user);
+    } catch (err) {
+      const box = $("#auth-error"); box.textContent = err.message; box.hidden = false;
+      f.elements.password.value = "";
+    } finally { btn.disabled = false; }
+  });
+  $("#btn-logout").addEventListener("click", async () => {
+    await flushMemo();
+    try { await api("POST", "/api/auth/logout"); } catch (e) { /* already logged out */ }
+    history.replaceState(null, "", location.pathname);
+    showAuth(); setAuthMode("login");
+  });
+  $("#pw-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target, d = formData(f);
+    try {
+      await api("POST", "/api/auth/password", d);
+      f.reset(); toast("Password changed. Other browsers have been logged out.");
+    } catch (err) { toast(err.message, true); }
+  });
+  $("#del-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target, d = formData(f);
+    if (!confirm(`Delete the account “${S.user.username}” and ALL of its data? This cannot be undone.`)) return;
+    try {
+      await api("POST", "/api/auth/delete-account", d);
+      f.reset(); history.replaceState(null, "", location.pathname);
+      showAuth("Your account and all of its data were deleted."); setAuthMode("login");
+    } catch (err) { toast(err.message, true); }
+  });
+}
+
+async function start() {
+  bind(); bindAuth();
+  const meta = await api("GET", "/api/meta");
+  $("#today").textContent = `Today (KST) · ${meta.today_kst}`;
+  S.today = meta.today_kst; S.day = S.today; S.month = S.today.slice(0, 7);
+  let me = null;
+  try { me = (await api("GET", "/api/auth/me")).user; } catch (e) { me = null; }
+  if (me) await enterDiary(me);
+  else { setAuthMode("login"); showAuth(); }
 }
 document.addEventListener("DOMContentLoaded", () => start().catch((e) => toast(e.message, true)));

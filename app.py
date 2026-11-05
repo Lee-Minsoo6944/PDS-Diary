@@ -1,27 +1,49 @@
-"""플랜두씨 다이어리 서버.
+"""플랜두씨 다이어리 서버 (과제 7: 가입·로그인 추가).
 
 표준 라이브러리만 씁니다(설치할 것 없음). SQLite 파일 하나에 모든 자료를 저장합니다.
 - 로컬 실행:  py app.py   →  http://127.0.0.1:8000
 - 배포(WSGI): 이 파일의 `application` 을 WSGI 진입점으로 씁니다.
+- 6번 자료를 내 계정으로 옮기기:  python3 app.py claim <아이디>
+
+인증 (직접 구현, 자세한 설명은 AUTH.md)
+- 비밀번호: hashlib.scrypt(N=2^14, r=8, p=1) + 계정마다 다른 16바이트 소금값. 원문은 어디에도 저장하지 않습니다.
+- 로그인 상태: 서버 세션. 브라우저에는 무작위 값(쿠키, HttpOnly·SameSite=Lax·https면 Secure)만 주고,
+  서버에는 그 값의 SHA-256만 저장합니다. 7일 뒤 만료, 로그아웃·비밀번호 변경 때 서버에서 지웁니다.
+- 서명용 비밀키를 쓰지 않으므로 코드·배포 파일·Git 기록에 비밀키가 없습니다.
+- 모든 자료 조회·수정·삭제는 로그인한 사람(user_id)의 자료로만 제한합니다. 남의 자료는 404(있는지조차 숨김).
 
 시간 규칙
 - 시각(…_at)은 UTC ISO-8601 문자열 'YYYY-MM-DDTHH:MM:SSZ' 로 저장하고, 화면에서 대한민국 시간(KST)으로 보여 줍니다.
 - 날짜(…_date)는 대한민국 기준 달력 날짜 'YYYY-MM-DD' 로 저장합니다(시간대 없음).
 - 시간 길이는 모두 '분(정수)' 단위로 저장하고 보여 줍니다.
 """
+import base64
+import hashlib
+import hmac
 import json
 import os
 import re
+import secrets
+import shutil
 import sqlite3
+import sys
 from datetime import date, datetime, timedelta, timezone
+from decimal import ROUND_HALF_UP, Decimal
+from http.cookies import CookieError, SimpleCookie
 from urllib.parse import parse_qs
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("PDS_DB_PATH", os.path.join(BASE_DIR, "data", "pds.db"))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 KST = timezone(timedelta(hours=9))  # 한국은 서머타임이 없어 +09:00 고정
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 MAX_BODY = 64 * 1024
+
+SESSION_COOKIE = "pds_session"
+SESSION_DAYS = 7
+SCRYPT_N, SCRYPT_R, SCRYPT_P, SCRYPT_LEN = 2 ** 14, 8, 1, 32
+USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,30}$")
+LOGIN_FAILED = "Wrong username or password"  # 아이디가 없을 때와 비밀번호가 틀릴 때 같은 문구
 
 STATIC_FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
@@ -38,10 +60,27 @@ SECURITY_HEADERS = [
     ("X-Frame-Options", "DENY"),
 ]
 
+# 새 DB용 표. 예전(v2) DB는 migrate() 가 고칩니다.
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS users (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    username            TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+    password_hash       TEXT    NOT NULL,
+    created_at          TEXT    NOT NULL,
+    password_changed_at TEXT    NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT    PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT    NOT NULL,
+    expires_at TEXT    NOT NULL
+);
+CREATE TABLE IF NOT EXISTS account_deletions (
+    user_id INTEGER PRIMARY KEY
 );
 CREATE TABLE IF NOT EXISTS plans (
     id                         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,6 +94,7 @@ CREATE TABLE IF NOT EXISTS plans (
     current_version            INTEGER NOT NULL DEFAULT 1,
     created_at                 TEXT    NOT NULL,
     updated_at                 TEXT    NOT NULL,
+    user_id                    INTEGER REFERENCES users(id),
     CHECK (end_date >= start_date)
 );
 CREATE TABLE IF NOT EXISTS plan_versions (
@@ -71,11 +111,6 @@ CREATE TABLE IF NOT EXISTS plan_versions (
     created_at        TEXT    NOT NULL,
     UNIQUE (plan_id, version)
 );
-CREATE TRIGGER IF NOT EXISTS plan_versions_no_update BEFORE UPDATE ON plan_versions
-BEGIN SELECT RAISE(ABORT, 'plan_versions is append-only'); END;
-CREATE TRIGGER IF NOT EXISTS plan_versions_no_delete BEFORE DELETE ON plan_versions
-BEGIN SELECT RAISE(ABORT, 'plan_versions is append-only'); END;
-
 CREATE TABLE IF NOT EXISTS todos (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     plan_id           INTEGER NOT NULL REFERENCES plans(id),
@@ -103,7 +138,6 @@ CREATE TABLE IF NOT EXISTS completions (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS completions_one_active
     ON completions (todo_id) WHERE undone_at IS NULL;
-
 CREATE TABLE IF NOT EXISTS work_logs (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     todo_id        INTEGER NOT NULL REFERENCES todos(id),
@@ -124,13 +158,29 @@ CREATE TABLE IF NOT EXISTS reflections (
     stats_json  TEXT    NOT NULL,
     created_at  TEXT    NOT NULL
 );
+CREATE TABLE IF NOT EXISTS day_notes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER REFERENCES users(id),
+    note_date  TEXT    NOT NULL,
+    body       TEXT    NOT NULL DEFAULT '',
+    updated_at TEXT    NOT NULL,
+    UNIQUE (user_id, note_date)
+);
+"""
+
+# 표가 모두 준비된 뒤에 만드는 것들(예전 DB는 이 시점에 user_id 열이 생겨 있음)
+POST_SCHEMA = """
 CREATE INDEX IF NOT EXISTS todos_plan ON todos (plan_id);
 CREATE INDEX IF NOT EXISTS logs_todo ON work_logs (todo_id);
-CREATE TABLE IF NOT EXISTS day_notes (
-    note_date  TEXT PRIMARY KEY,
-    body       TEXT NOT NULL DEFAULT '',
-    updated_at TEXT NOT NULL
-);
+CREATE INDEX IF NOT EXISTS plans_user ON plans (user_id);
+CREATE INDEX IF NOT EXISTS sessions_user ON sessions (user_id);
+CREATE TRIGGER IF NOT EXISTS plan_versions_no_update BEFORE UPDATE ON plan_versions
+BEGIN SELECT RAISE(ABORT, 'plan_versions is append-only'); END;
+DROP TRIGGER IF EXISTS plan_versions_no_delete;
+CREATE TRIGGER plan_versions_no_delete BEFORE DELETE ON plan_versions
+WHEN NOT EXISTS (SELECT 1 FROM account_deletions d JOIN plans p ON p.user_id = d.user_id
+                 WHERE p.id = OLD.plan_id)
+BEGIN SELECT RAISE(ABORT, 'plan_versions is append-only'); END;
 """
 
 PRIORITY_LABEL = {1: "High", 2: "Normal", 3: "Low"}
@@ -152,6 +202,11 @@ def today_kst():
     return datetime.now(KST).date().isoformat()
 
 
+def kst_date_of(instant):
+    """'…Z' UTC 시각 → 대한민국 날짜 'YYYY-MM-DD'"""
+    return datetime.fromisoformat(instant.replace("Z", "+00:00")).astimezone(KST).date().isoformat()
+
+
 def connect():
     conn = sqlite3.connect(DB_PATH, timeout=10, isolation_level=None)
     conn.row_factory = sqlite3.Row
@@ -160,13 +215,53 @@ def connect():
     return conn
 
 
+def table_columns(conn, table):
+    return {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def migrate(conn):
+    """v2(로그인 없음) → v3(계정별 자료). 예전 자료는 주인 없이(user_id NULL) 남고, claim 으로 옮깁니다."""
+    if "user_id" not in table_columns(conn, "plans"):
+        conn.execute("ALTER TABLE plans ADD COLUMN user_id INTEGER REFERENCES users(id)")
+    if "user_id" not in table_columns(conn, "day_notes"):
+        conn.executescript("""
+            BEGIN;
+            CREATE TABLE day_notes_v3 (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id    INTEGER REFERENCES users(id),
+                note_date  TEXT    NOT NULL,
+                body       TEXT    NOT NULL DEFAULT '',
+                updated_at TEXT    NOT NULL,
+                UNIQUE (user_id, note_date)
+            );
+            INSERT INTO day_notes_v3 (user_id, note_date, body, updated_at)
+                SELECT NULL, note_date, body, updated_at FROM day_notes;
+            DROP TABLE day_notes;
+            ALTER TABLE day_notes_v3 RENAME TO day_notes;
+            COMMIT;
+        """)
+
+
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    existed = os.path.exists(DB_PATH) and os.path.getsize(DB_PATH) > 0
     conn = connect()
     try:
         # WAL은 네트워크 디스크(PythonAnywhere 등)에서 믿을 수 없어 기본 방식을 씁니다.
         conn.execute("PRAGMA journal_mode = DELETE")
+        old = None
+        if existed:
+            try:
+                r = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+                old = int(r[0]) if r else None
+            except sqlite3.OperationalError:
+                old = None
+        if existed and (old or 0) < SCHEMA_VERSION:
+            stamp = datetime.now(KST).strftime("%Y%m%d-%H%M%S")
+            shutil.copy2(DB_PATH, f"{DB_PATH}.v{old}-backup-{stamp}")  # 고치기 전에 통째로 백업
         conn.executescript(SCHEMA)
+        migrate(conn)
+        conn.executescript(POST_SCHEMA)
         conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)",
                      (str(SCHEMA_VERSION),))
     finally:
@@ -273,6 +368,188 @@ def get_id(s):
     return int(s)
 
 
+# ---------------------------------------------------------------- 비밀번호 (scrypt)
+def hash_password(password):
+    """되돌릴 수 없게 바꿔 저장. 계정마다 새 소금값을 쓰므로 같은 비밀번호도 저장값이 다릅니다."""
+    salt = os.urandom(16)
+    dk = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=SCRYPT_N, r=SCRYPT_R, p=SCRYPT_P,
+                        maxmem=64 * 1024 * 1024, dklen=SCRYPT_LEN)
+    b64 = lambda b: base64.b64encode(b).decode("ascii")  # noqa: E731
+    return f"scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${b64(salt)}${b64(dk)}"
+
+
+def verify_password(password, stored):
+    try:
+        algo, n, r, p, salt, dk = stored.split("$")
+        if algo != "scrypt":
+            return False
+        want = base64.b64decode(dk)
+        got = hashlib.scrypt(password.encode("utf-8"), salt=base64.b64decode(salt), n=int(n), r=int(r),
+                             p=int(p), maxmem=64 * 1024 * 1024, dklen=len(want))
+    except (ValueError, TypeError):
+        return False
+    return hmac.compare_digest(got, want)
+
+
+_DUMMY_HASH = []
+
+
+def dummy_hash():
+    # 없는 아이디로 로그인할 때도 같은 계산을 해서, 걸리는 시간으로 아이디 유무가 드러나지 않게 합니다.
+    if not _DUMMY_HASH:
+        _DUMMY_HASH.append(hash_password(secrets.token_hex(16)))
+    return _DUMMY_HASH[0]
+
+
+def read_password(body, key):
+    v = body.get(key)
+    if not isinstance(v, str) or not v:
+        raise ApiError(400, f"{key}: required")
+    return v
+
+
+def check_new_password(pw):
+    if len(pw) < 8:
+        raise ApiError(400, "password: use at least 8 characters")
+    if len(pw) > 128:
+        raise ApiError(400, "password: use 128 characters or fewer")
+    return pw
+
+
+# ---------------------------------------------------------------- 세션
+def token_hash(token):
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def new_session(conn, user_id):
+    token = secrets.token_urlsafe(32)  # 256비트 무작위 값. 브라우저 쿠키에만 원문이 있음
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    conn.execute("INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?,?,?,?)",
+                 (token_hash(token), user_id, now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                  (now + timedelta(days=SESSION_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")))
+    return token
+
+
+def read_session_token(environ):
+    raw = environ.get("HTTP_COOKIE", "")
+    if not raw:
+        return None
+    try:
+        c = SimpleCookie()
+        c.load(raw)
+    except CookieError:
+        return None
+    m = c.get(SESSION_COOKIE)
+    return m.value if m and m.value else None
+
+
+def session_user(conn, environ):
+    token = read_session_token(environ)
+    if not token:
+        return None
+    r = conn.execute("SELECT s.user_id, s.expires_at, u.username FROM sessions s JOIN users u ON u.id = s.user_id"
+                     " WHERE s.token_hash = ?", (token_hash(token),)).fetchone()
+    if not r:
+        return None
+    if r["expires_at"] <= now_utc():  # 만료: 서버에서 지우고 거절
+        conn.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash(token),))
+        return None
+    return {"id": r["user_id"], "username": r["username"]}
+
+
+def cookie_header(environ, value, max_age):
+    secure = (environ.get("wsgi.url_scheme") == "https"
+              or environ.get("HTTP_X_FORWARDED_PROTO", "").lower() == "https")
+    parts = [f"{SESSION_COOKIE}={value}", "Path=/", "HttpOnly", "SameSite=Lax", f"Max-Age={max_age}"]
+    if secure:
+        parts.append("Secure")
+    return ("Set-Cookie", "; ".join(parts))
+
+
+# ---------------------------------------------------------------- 가입·로그인·로그아웃·계정
+def signup(conn, body, ctx):
+    username = req_text(body, "username", 30)
+    if not USERNAME_RE.match(username):
+        raise ApiError(400, "username: 3–30 letters, numbers, dot, dash or underscore")
+    pw = check_new_password(read_password(body, "password"))
+    pw_hash, ts = hash_password(pw), now_utc()
+    with tx(conn):
+        if conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
+            raise ApiError(409, "That username is already taken")
+        cur = conn.execute("INSERT INTO users (username, password_hash, created_at, password_changed_at)"
+                           " VALUES (?,?,?,?)", (username, pw_hash, ts, ts))
+        token = new_session(conn, cur.lastrowid)
+    ctx["headers"].append(cookie_header(ctx["environ"], token, SESSION_DAYS * 86400))
+    return {"ok": True, "user": {"id": cur.lastrowid, "username": username}}
+
+
+def login(conn, body, ctx):
+    username = body.get("username") if isinstance(body.get("username"), str) else ""
+    pw = body.get("password") if isinstance(body.get("password"), str) else ""
+    r = conn.execute("SELECT id, username, password_hash FROM users WHERE username = ?",
+                     (username.strip(),)).fetchone()
+    ok = verify_password(pw, r["password_hash"] if r else dummy_hash())
+    if not r or not ok:
+        raise ApiError(401, LOGIN_FAILED)
+    with tx(conn):
+        token = new_session(conn, r["id"])
+    ctx["headers"].append(cookie_header(ctx["environ"], token, SESSION_DAYS * 86400))
+    return {"ok": True, "user": {"id": r["id"], "username": r["username"]}}
+
+
+def logout(conn, ctx):
+    token = read_session_token(ctx["environ"])
+    if token:
+        with tx(conn):
+            conn.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash(token),))  # 서버에서 끊기
+    ctx["headers"].append(cookie_header(ctx["environ"], "", 0))
+    return {"ok": True}
+
+
+def change_password(conn, user, body, ctx):
+    cur_pw = read_password(body, "current_password")
+    new_pw = check_new_password(read_password(body, "new_password"))
+    r = conn.execute("SELECT password_hash FROM users WHERE id = ?", (user["id"],)).fetchone()
+    if not verify_password(cur_pw, r["password_hash"]):
+        raise ApiError(403, "Current password is wrong")
+    new_hash = hash_password(new_pw)
+    with tx(conn):
+        conn.execute("UPDATE users SET password_hash = ?, password_changed_at = ? WHERE id = ?",
+                     (new_hash, now_utc(), user["id"]))
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (user["id"],))  # 이전 세션 모두 끊기
+        token = new_session(conn, user["id"])
+    ctx["headers"].append(cookie_header(ctx["environ"], token, SESSION_DAYS * 86400))
+    return {"ok": True}
+
+
+def delete_account(conn, user, body, ctx):
+    pw = read_password(body, "password")
+    r = conn.execute("SELECT password_hash FROM users WHERE id = ?", (user["id"],)).fetchone()
+    if not verify_password(pw, r["password_hash"]):
+        raise ApiError(403, "Password is wrong")
+    uid = user["id"]
+    plans_q = "SELECT id FROM plans WHERE user_id = ?"
+    todos_q = f"SELECT id FROM todos WHERE plan_id IN ({plans_q})"
+    with tx(conn):
+        conn.execute("INSERT OR IGNORE INTO account_deletions (user_id) VALUES (?)", (uid,))
+        conn.execute(f"UPDATE plans SET carried_from_reflection_id = NULL WHERE carried_from_reflection_id IN"
+                     f" (SELECT id FROM reflections WHERE plan_id IN ({plans_q}))", (uid,))
+        for sql in (f"DELETE FROM todo_tags WHERE todo_id IN ({todos_q})",
+                    f"DELETE FROM completions WHERE todo_id IN ({todos_q})",
+                    f"DELETE FROM work_logs WHERE todo_id IN ({todos_q})",
+                    f"DELETE FROM todos WHERE plan_id IN ({plans_q})",
+                    f"DELETE FROM reflections WHERE plan_id IN ({plans_q})",
+                    f"DELETE FROM plan_versions WHERE plan_id IN ({plans_q})",
+                    "DELETE FROM plans WHERE user_id = ?",
+                    "DELETE FROM day_notes WHERE user_id = ?",
+                    "DELETE FROM sessions WHERE user_id = ?",
+                    "DELETE FROM users WHERE id = ?",
+                    "DELETE FROM account_deletions WHERE user_id = ?"):
+            conn.execute(sql, (uid,))
+    ctx["headers"].append(cookie_header(ctx["environ"], "", 0))
+    return {"ok": True, "deleted": True}
+
+
 # ---------------------------------------------------------------- 계획
 PLAN_FIELDS = ("title", "start_date", "end_date", "priority", "success_criteria", "estimated_minutes")
 
@@ -295,15 +572,16 @@ def read_plan_body(body, fallback_minutes=0):
     return p
 
 
-def plan_row(conn, plan_id):
-    r = conn.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
+def plan_row(conn, uid, plan_id):
+    """내 계획만. 남의 계획이거나 없으면 똑같이 404 (있는지조차 알려 주지 않음)."""
+    r = conn.execute("SELECT * FROM plans WHERE id = ? AND user_id = ?", (plan_id, uid)).fetchone()
     if not r:
         raise ApiError(404, "Plan not found")
     return dict(r)
 
 
-def plan_detail(conn, plan_id):
-    p = plan_row(conn, plan_id)
+def plan_detail(conn, uid, plan_id):
+    p = plan_row(conn, uid, plan_id)
     p["versions"] = [dict(r) for r in conn.execute(
         "SELECT * FROM plan_versions WHERE plan_id = ? ORDER BY version", (plan_id,))]
     p["reflections"] = [dict(r) for r in conn.execute(
@@ -311,7 +589,7 @@ def plan_detail(conn, plan_id):
     for r in p["reflections"]:
         r["stats"] = json.loads(r.pop("stats_json"))
         r["carried_to_plan_ids"] = [x[0] for x in conn.execute(
-            "SELECT id FROM plans WHERE carried_from_reflection_id = ? ORDER BY id", (r["id"],))]
+            "SELECT id FROM plans WHERE carried_from_reflection_id = ? AND user_id = ? ORDER BY id", (r["id"], uid))]
     p["carried_from"] = None
     if p["carried_from_reflection_id"]:
         r = conn.execute("SELECT id, plan_id, improvement, created_at FROM reflections WHERE id = ?",
@@ -320,45 +598,46 @@ def plan_detail(conn, plan_id):
     return p
 
 
-def list_plans(conn):
+def list_plans(conn, uid):
     rows = conn.execute("""
         SELECT p.*, (SELECT COUNT(*) FROM todos t WHERE t.plan_id = p.id AND t.deleted_at IS NULL) AS todo_count
-        FROM plans p ORDER BY p.start_date DESC, p.id DESC""")
+        FROM plans p WHERE p.user_id = ? ORDER BY p.start_date DESC, p.id DESC""", (uid,))
     return [dict(r) for r in rows]
 
 
-def create_plan(conn, body):
+def create_plan(conn, uid, body):
     p = read_plan_body(body)
     carried = body.get("carried_from_reflection_id")
     if carried in ("", None):
         carried = None
     else:
         carried = req_int(body, "carried_from_reflection_id", 1, 10 ** 12)
-        if not conn.execute("SELECT 1 FROM reflections WHERE id = ?", (carried,)).fetchone():
+        if not conn.execute("SELECT 1 FROM reflections r JOIN plans p ON p.id = r.plan_id"
+                            " WHERE r.id = ? AND p.user_id = ?", (carried, uid)).fetchone():
             raise ApiError(400, "carried_from_reflection_id: reflection not found")
     ts = now_utc()
     with tx(conn):
         cur = conn.execute(
             "INSERT INTO plans (title, start_date, end_date, priority, success_criteria, estimated_minutes,"
-            " carried_from_reflection_id, current_version, created_at, updated_at)"
-            " VALUES (?,?,?,?,?,?,?,1,?,?)",
-            (*[p[k] for k in PLAN_FIELDS], carried, ts, ts))
+            " carried_from_reflection_id, current_version, created_at, updated_at, user_id)"
+            " VALUES (?,?,?,?,?,?,?,1,?,?,?)",
+            (*[p[k] for k in PLAN_FIELDS], carried, ts, ts, uid))
         pid = cur.lastrowid
         conn.execute(
             "INSERT INTO plan_versions (plan_id, version, title, start_date, end_date, priority,"
             " success_criteria, estimated_minutes, change_note, created_at) VALUES (?,1,?,?,?,?,?,?,?,?)",
             (pid, *[p[k] for k in PLAN_FIELDS], "Original plan", ts))
-    return plan_detail(conn, pid)
+    return plan_detail(conn, uid, pid)
 
 
-def update_plan(conn, plan_id, body):
+def update_plan(conn, uid, plan_id, body):
     note = req_text(body, "change_note", 300, required=False)
     ts = now_utc()
     with tx(conn):
-        cur = plan_row(conn, plan_id)
+        cur = plan_row(conn, uid, plan_id)  # 주인 확인이 먼저, 저장은 그다음
         p = read_plan_body(body, fallback_minutes=cur["estimated_minutes"])
         if all(cur[k] == p[k] for k in PLAN_FIELDS):
-            return plan_detail(conn, plan_id)  # 바뀐 게 없으면 새 판을 만들지 않음
+            return plan_detail(conn, uid, plan_id)  # 바뀐 게 없으면 새 판을 만들지 않음
         ver = cur["current_version"] + 1
         conn.execute(
             "INSERT INTO plan_versions (plan_id, version, title, start_date, end_date, priority,"
@@ -366,14 +645,16 @@ def update_plan(conn, plan_id, body):
             (plan_id, ver, *[p[k] for k in PLAN_FIELDS], note, ts))
         conn.execute(
             "UPDATE plans SET title=?, start_date=?, end_date=?, priority=?, success_criteria=?,"
-            " estimated_minutes=?, current_version=?, updated_at=? WHERE id=?",
-            (*[p[k] for k in PLAN_FIELDS], ver, ts, plan_id))
-    return plan_detail(conn, plan_id)
+            " estimated_minutes=?, current_version=?, updated_at=? WHERE id=? AND user_id=?",
+            (*[p[k] for k in PLAN_FIELDS], ver, ts, plan_id, uid))
+    return plan_detail(conn, uid, plan_id)
 
 
 # ---------------------------------------------------------------- 할 일
-def todo_row(conn, todo_id, include_deleted=False):
-    r = conn.execute("SELECT * FROM todos WHERE id = ?", (todo_id,)).fetchone()
+def todo_row(conn, uid, todo_id, include_deleted=False):
+    """내 계획에 속한 할 일만. 남의 것이면 404."""
+    r = conn.execute("SELECT t.* FROM todos t JOIN plans p ON p.id = t.plan_id"
+                     " WHERE t.id = ? AND p.user_id = ?", (todo_id, uid)).fetchone()
     if not r or (r["deleted_at"] and not include_deleted):
         raise ApiError(404, "To-do not found")
     return r
@@ -402,8 +683,8 @@ def decorate_todos(conn, rows):
     return todos
 
 
-def todo_detail(conn, todo_id):
-    t = decorate_todos(conn, [todo_row(conn, todo_id)])[0]
+def todo_detail(conn, uid, todo_id):
+    t = decorate_todos(conn, [todo_row(conn, uid, todo_id)])[0]
     t["logs"] = [dict(r) for r in conn.execute(
         "SELECT * FROM work_logs WHERE todo_id = ? ORDER BY started_at, id", (todo_id,))]
     t["completions"] = [dict(r) for r in conn.execute(
@@ -421,8 +702,9 @@ SORTS = {
 }
 
 
-def list_todos(conn, qs):
-    where, args = ["t.deleted_at IS NULL"], []
+def list_todos(conn, uid, qs):
+    # 목록도 한 건 조회와 같은 주인 조건을 붙입니다(내 계획의 할 일만).
+    where, args = ["t.deleted_at IS NULL", "t.plan_id IN (SELECT id FROM plans WHERE user_id = ?)"], [uid]
     plan_id = qs.get("plan_id")
     if plan_id:
         where.append("t.plan_id = ?")
@@ -482,43 +764,43 @@ def set_tags(conn, todo_id, tags):
     conn.executemany("INSERT INTO todo_tags (todo_id, tag) VALUES (?, ?)", [(todo_id, t) for t in tags])
 
 
-def create_todo(conn, body):
+def create_todo(conn, uid, body):
     plan_id = req_int(body, "plan_id", 1, 10 ** 12)
-    plan_row(conn, plan_id)
     t, tags, ts = read_todo_body(body), parse_tags(body.get("tags")), now_utc()
     with tx(conn):
+        plan_row(conn, uid, plan_id)  # 남의 계획에는 넣을 수 없음(404)
         cur = conn.execute(
             "INSERT INTO todos (plan_id, title, note, due_date, priority, estimated_minutes, status,"
             " created_at, updated_at) VALUES (?,?,?,?,?,?,'open',?,?)",
             (plan_id, t["title"], t["note"], t["due_date"], t["priority"], t["estimated_minutes"], ts, ts))
         set_tags(conn, cur.lastrowid, tags)
-    return todo_detail(conn, cur.lastrowid)
+    return todo_detail(conn, uid, cur.lastrowid)
 
 
-def update_todo(conn, todo_id, body):
+def update_todo(conn, uid, todo_id, body):
     t, tags = read_todo_body(body), parse_tags(body.get("tags"))
     with tx(conn):
-        todo_row(conn, todo_id)
+        todo_row(conn, uid, todo_id)  # 주인 확인이 먼저, 저장은 그다음
         conn.execute("UPDATE todos SET title=?, note=?, due_date=?, priority=?, estimated_minutes=?, updated_at=?"
                      " WHERE id=?", (t["title"], t["note"], t["due_date"], t["priority"],
                                      t["estimated_minutes"], now_utc(), todo_id))
         set_tags(conn, todo_id, tags)
-    return todo_detail(conn, todo_id)
+    return todo_detail(conn, uid, todo_id)
 
 
-def delete_todo(conn, todo_id):
+def delete_todo(conn, uid, todo_id):
     with tx(conn):
-        todo_row(conn, todo_id)
+        todo_row(conn, uid, todo_id)
         ts = now_utc()
         conn.execute("UPDATE todos SET deleted_at=?, updated_at=? WHERE id=?", (ts, ts, todo_id))
     return {"ok": True, "id": todo_id}
 
 
-def complete_todo(conn, todo_id, body):
+def complete_todo(conn, uid, todo_id, body):
     """완료 처리. 같은 키로 여러 번 와도, 키가 달라도, 진행 중인 완료 기록은 한 건만 남습니다."""
     key = req_text(body, "idempotency_key", 100)
     with tx(conn):
-        t = todo_row(conn, todo_id)
+        t = todo_row(conn, uid, todo_id)
         seen = conn.execute("SELECT todo_id FROM completions WHERE idempotency_key = ?", (key,)).fetchone()
         if seen:
             if seen[0] != todo_id:
@@ -533,23 +815,23 @@ def complete_todo(conn, todo_id, body):
                          (todo_id, key, ts))
             conn.execute("UPDATE todos SET status='done', updated_at=? WHERE id=?", (ts, todo_id))
             created = True
-    d = todo_detail(conn, todo_id)
+    d = todo_detail(conn, uid, todo_id)
     d["created"] = created
     return d
 
 
-def reopen_todo(conn, todo_id):
+def reopen_todo(conn, uid, todo_id):
     with tx(conn):
-        t = todo_row(conn, todo_id)
+        t = todo_row(conn, uid, todo_id)
         if t["status"] == "done":
             ts = now_utc()
             conn.execute("UPDATE completions SET undone_at=? WHERE todo_id=? AND undone_at IS NULL", (ts, todo_id))
             conn.execute("UPDATE todos SET status='open', updated_at=? WHERE id=?", (ts, todo_id))
-    return todo_detail(conn, todo_id)
+    return todo_detail(conn, uid, todo_id)
 
 
 # ---------------------------------------------------------------- 실행 기록
-def create_log(conn, todo_id, body):
+def create_log(conn, uid, todo_id, body):
     start, end = req_instant(body, "started_at"), req_instant(body, "ended_at")
     if end < start:
         raise ApiError(400, "ended_at: cannot be before the start time")
@@ -559,15 +841,15 @@ def create_log(conn, todo_id, body):
     blocker = req_text(body, "blocker", 1000, required=False)
     fmt = "%Y-%m-%dT%H:%M:%SZ"
     with tx(conn):
-        todo_row(conn, todo_id)
+        todo_row(conn, uid, todo_id)
         cur = conn.execute(
             "INSERT INTO work_logs (todo_id, started_at, ended_at, actual_minutes, blocker, created_at)"
             " VALUES (?,?,?,?,?,?)", (todo_id, start.strftime(fmt), end.strftime(fmt), minutes, blocker, now_utc()))
     return dict(conn.execute("SELECT * FROM work_logs WHERE id = ?", (cur.lastrowid,)).fetchone())
 
 
-def list_logs(conn, qs):
-    where, args = ["t.deleted_at IS NULL"], []
+def list_logs(conn, uid, qs):
+    where, args = ["t.deleted_at IS NULL", "p.user_id = ?"], [uid]
     if qs.get("plan_id"):
         where.append("t.plan_id = ?")
         args.append(get_id(qs["plan_id"]))
@@ -577,21 +859,86 @@ def list_logs(conn, qs):
         args += id_list
     rows = conn.execute(
         f"SELECT w.*, t.title AS todo_title, t.plan_id, t.estimated_minutes AS todo_estimated_minutes"
-        f" FROM work_logs w JOIN todos t ON t.id = w.todo_id WHERE {' AND '.join(where)}"
-        f" ORDER BY w.started_at DESC, w.id DESC", args)
+        f" FROM work_logs w JOIN todos t ON t.id = w.todo_id JOIN plans p ON p.id = t.plan_id"
+        f" WHERE {' AND '.join(where)} ORDER BY w.started_at DESC, w.id DESC", args)
     return [dict(r) for r in rows]
 
 
-def delete_log(conn, log_id):
+def delete_log(conn, uid, log_id):
     with tx(conn):
-        if conn.execute("DELETE FROM work_logs WHERE id = ?", (log_id,)).rowcount == 0:
+        n = conn.execute("DELETE FROM work_logs WHERE id = ? AND todo_id IN (SELECT t.id FROM todos t"
+                         " JOIN plans p ON p.id = t.plan_id WHERE p.user_id = ?)", (log_id, uid)).rowcount
+        if n == 0:
             raise ApiError(404, "Work log not found")
     return {"ok": True, "id": log_id}
 
 
 # ---------------------------------------------------------------- 돌아보기
-def review(conn, plan_id, qs):
-    plan = plan_row(conn, plan_id)
+OUTLIER_MINUTES = 720  # 기록 한 건이 12시간을 넘으면 '튀는 값'으로 표시(합계에는 넣음)
+DAILY_MAX_DAYS = 62
+
+
+def daily_table(conn, plan, todos, logs, period_from, period_to):
+    """날짜별(대한민국 기준) 실행 시간·완료 수와 합계·평균.
+
+    - 날짜: 실행 기록은 시작 시각, 완료는 완료 시각의 대한민국 날짜
+    - 빠진 날: 기록이 없는 날도 0분으로 줄에 넣고 평균의 날짜 수에 셈
+    - 중복: 같은 할 일·같은 시작·같은 끝 시각의 기록은 한 번만 셈
+    - 튀는 값: 한 건이 720분을 넘으면 표시만 하고 합계에는 넣음
+    - 반올림: 평균은 소수 첫째 자리까지, 사사오입(ROUND_HALF_UP)
+    """
+    d_from = period_from or plan["start_date"]
+    d_to = period_to or min(plan["end_date"], today_kst())
+    if d_to < d_from:
+        d_to = d_from
+    start = date.fromisoformat(d_from)
+    days = []
+    while len(days) < DAILY_MAX_DAYS and start.isoformat() <= d_to:
+        days.append(start.isoformat())
+        start += timedelta(days=1)
+    rows = {d: {"date": d, "logs": 0, "actual_minutes": 0, "done": 0, "duplicates": 0, "outliers": 0}
+            for d in days}
+    seen = set()
+    for w in logs:
+        d = kst_date_of(w["started_at"])
+        if d not in rows:
+            continue
+        key = (w["todo_id"], w["started_at"], w["ended_at"])
+        if key in seen:
+            rows[d]["duplicates"] += 1
+            continue
+        seen.add(key)
+        rows[d]["logs"] += 1
+        rows[d]["actual_minutes"] += w["actual_minutes"]
+        if w["actual_minutes"] > OUTLIER_MINUTES:
+            rows[d]["outliers"] += 1
+    ids = [t["id"] for t in todos]
+    if ids:
+        for c in conn.execute(f"SELECT completed_at FROM completions WHERE undone_at IS NULL AND todo_id IN"
+                              f" ({','.join('?' * len(ids))})", ids):
+            d = kst_date_of(c["completed_at"])
+            if d in rows:
+                rows[d]["done"] += 1
+    out = [rows[d] for d in days]
+    n = len(out)
+    total_min = sum(r["actual_minutes"] for r in out)
+    total_done = sum(r["done"] for r in out)
+
+    def avg(x):
+        return float((Decimal(x) / Decimal(n)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)) if n else 0.0
+    return {"from": days[0] if days else d_from, "to": days[-1] if days else d_to, "days": n, "rows": out,
+            "total": {"actual_minutes": total_min, "done": total_done, "logs": sum(r["logs"] for r in out)},
+            "average": {"actual_minutes": avg(total_min), "done": avg(total_done)},
+            "rules": {"date": "Korea (KST) date of the log's start time / the completion time",
+                      "missing": "days with no records count as 0 and are included in the average",
+                      "duplicates": "logs with the same to-do, start and end are counted once",
+                      "outliers": f"a single log over {OUTLIER_MINUTES} min is flagged but still counted",
+                      "rounding": "averages to 1 decimal place, half up",
+                      "week_starts": "Sunday"}}
+
+
+def review(conn, uid, plan_id, qs):
+    plan = plan_row(conn, uid, plan_id)
     period_from = req_date(qs, "from", required=False)
     period_to = req_date(qs, "to", required=False)
     where, args = ["plan_id = ?", "deleted_at IS NULL"], [plan_id]
@@ -630,117 +977,159 @@ def review(conn, plan_id, qs):
         "actual_minutes": {"log_ids": [w["id"] for w in logs]},
         "diff_minutes": {"todo_ids": ids, "log_ids": [w["id"] for w in logs]},
     }
+    # 날짜별 표는 기간 안 '모든' 할 일의 기록을 봅니다(마감일 기간과 무관하게, 기록한 날 기준).
+    all_todos = conn.execute("SELECT * FROM todos WHERE plan_id = ? AND deleted_at IS NULL", (plan_id,)).fetchall()
+    all_ids = [t["id"] for t in all_todos]
+    all_logs = conn.execute(f"SELECT * FROM work_logs WHERE todo_id IN ({','.join('?' * len(all_ids))})"
+                            f" ORDER BY id", all_ids).fetchall() if all_ids else []
     return {"plan_id": plan_id, "plan_title": plan["title"], "today_kst": today,
             "period": {"from": period_from, "to": period_to},
-            "stats": stats, "evidence": evidence}
+            "stats": stats, "evidence": evidence,
+            "daily": daily_table(conn, plan, all_todos, all_logs, period_from, period_to)}
 
 
-def create_reflection(conn, plan_id, body):
+def create_reflection(conn, uid, plan_id, body):
     improvement = req_text(body, "improvement", 300)
     note = req_text(body, "note", 2000, required=False)
     qs = {"from": body.get("from") or None, "to": body.get("to") or None}
-    r = review(conn, plan_id, qs)
+    r = review(conn, uid, plan_id, qs)
     with tx(conn):
         cur = conn.execute(
             "INSERT INTO reflections (plan_id, period_from, period_to, note, improvement, stats_json, created_at)"
             " VALUES (?,?,?,?,?,?,?)",
             (plan_id, r["period"]["from"], r["period"]["to"], note, improvement,
              json.dumps(r["stats"], ensure_ascii=False), now_utc()))
-    return plan_detail(conn, plan_id) | {"new_reflection_id": cur.lastrowid}
+    return plan_detail(conn, uid, plan_id) | {"new_reflection_id": cur.lastrowid}
 
 
 # ---------------------------------------------------------------- 날짜별 메모
-def get_note(conn, day):
-    r = conn.execute("SELECT * FROM day_notes WHERE note_date = ?", (day,)).fetchone()
+def get_note(conn, uid, day):
+    r = conn.execute("SELECT note_date, body, updated_at FROM day_notes WHERE user_id = ? AND note_date = ?",
+                     (uid, day)).fetchone()
     return dict(r) if r else {"note_date": day, "body": "", "updated_at": None}
 
 
-def put_note(conn, day, body):
+def put_note(conn, uid, day, body):
     text = body.get("body", "")
     if not isinstance(text, str):
         raise ApiError(400, "body: must be text")
     if len(text) > 5000:
         raise ApiError(400, "body: must be 5000 characters or fewer")
     with tx(conn):
-        conn.execute("INSERT INTO day_notes (note_date, body, updated_at) VALUES (?,?,?)"
-                     " ON CONFLICT(note_date) DO UPDATE SET body = excluded.body, updated_at = excluded.updated_at",
-                     (day, text, now_utc()))
-    return get_note(conn, day)
+        conn.execute("INSERT INTO day_notes (user_id, note_date, body, updated_at) VALUES (?,?,?,?)"
+                     " ON CONFLICT(user_id, note_date) DO UPDATE SET body = excluded.body,"
+                     " updated_at = excluded.updated_at", (uid, day, text, now_utc()))
+    return get_note(conn, uid, day)
 
 
-def list_notes(conn, qs):
+def list_notes(conn, uid, qs):
     lo, hi = req_date(qs, "from"), req_date(qs, "to")
-    rows = conn.execute("SELECT note_date FROM day_notes WHERE body <> '' AND note_date BETWEEN ? AND ?"
-                        " ORDER BY note_date", (lo, hi))
+    rows = conn.execute("SELECT note_date FROM day_notes WHERE user_id = ? AND body <> ''"
+                        " AND note_date BETWEEN ? AND ? ORDER BY note_date", (uid, lo, hi))
     return [r[0] for r in rows]
 
 
-# ---------------------------------------------------------------- 내보내기
-def export_all(conn):
+# ---------------------------------------------------------------- 내보내기 (내 자료만)
+def export_all(conn, user):
+    uid = user["id"]
+    plans_q = "SELECT id FROM plans WHERE user_id = ?"
+    todos_q = f"SELECT id FROM todos WHERE plan_id IN ({plans_q})"
     out = {"app": "plan-do-see-diary", "schema_version": SCHEMA_VERSION, "exported_at": now_utc(),
+           "account": {"username": user["username"]},
            "time_rules": {"instants": "UTC ISO-8601 (Z)", "dates": "Korea (KST, UTC+9, Asia/Seoul) calendar date YYYY-MM-DD",
                           "durations": "minutes (integer)"}}
-    for table in ("plans", "plan_versions", "todos", "todo_tags", "completions", "work_logs", "reflections", "day_notes"):
-        out[table] = [dict(r) for r in conn.execute(f"SELECT * FROM {table} ORDER BY rowid")]
+    queries = {
+        "plans": ("SELECT * FROM plans WHERE user_id = ? ORDER BY id", uid),
+        "plan_versions": (f"SELECT * FROM plan_versions WHERE plan_id IN ({plans_q}) ORDER BY id", uid),
+        "todos": (f"SELECT * FROM todos WHERE plan_id IN ({plans_q}) ORDER BY id", uid),
+        "todo_tags": (f"SELECT * FROM todo_tags WHERE todo_id IN ({todos_q}) ORDER BY rowid", uid),
+        "completions": (f"SELECT * FROM completions WHERE todo_id IN ({todos_q}) ORDER BY id", uid),
+        "work_logs": (f"SELECT * FROM work_logs WHERE todo_id IN ({todos_q}) ORDER BY id", uid),
+        "reflections": (f"SELECT * FROM reflections WHERE plan_id IN ({plans_q}) ORDER BY id", uid),
+        "day_notes": ("SELECT note_date, body, updated_at FROM day_notes WHERE user_id = ? ORDER BY note_date", uid),
+    }
+    for table, (sql, arg) in queries.items():
+        out[table] = [dict(r) for r in conn.execute(sql, (arg,))]
     return out
 
 
 # ---------------------------------------------------------------- 라우팅
-def route(method, path, qs, body, conn):
+def route(method, path, qs, body, conn, ctx):
     parts = [p for p in path.split("/") if p][1:]  # 'api' 다음부터
     n = len(parts)
     if parts == ["meta"] and method == "GET":
-        return {"today_kst": today_kst(), "schema_version": SCHEMA_VERSION, "login": False}
+        return {"today_kst": today_kst(), "schema_version": SCHEMA_VERSION}
+    # --- 로그인 없이 부를 수 있는 것: 가입·로그인·로그아웃·내가 누구인지
+    if parts[:1] == ["auth"]:
+        if parts == ["auth", "signup"] and method == "POST":
+            return signup(conn, body, ctx)
+        if parts == ["auth", "login"] and method == "POST":
+            return login(conn, body, ctx)
+        if parts == ["auth", "logout"] and method == "POST":
+            return logout(conn, ctx)
+        if parts == ["auth", "me"] and method == "GET":
+            if not ctx["user"]:
+                raise ApiError(401, "Please log in")
+            return {"user": ctx["user"]}
+    # --- 여기부터는 로그인한 사람만. 모든 조회에 그 사람의 id(uid)를 넘깁니다.
+    user = ctx["user"]
+    if not user:
+        raise ApiError(401, "Please log in")
+    uid = user["id"]
+    if parts == ["auth", "password"] and method == "POST":
+        return change_password(conn, user, body, ctx)
+    if parts == ["auth", "delete-account"] and method == "POST":
+        return delete_account(conn, user, body, ctx)
     if parts == ["plans"]:
         if method == "GET":
-            return list_plans(conn)
+            return list_plans(conn, uid)
         if method == "POST":
-            return create_plan(conn, body)
+            return create_plan(conn, uid, body)
     if n == 2 and parts[0] == "plans":
         pid = get_id(parts[1])
         if method == "GET":
-            return plan_detail(conn, pid)
+            return plan_detail(conn, uid, pid)
         if method == "PUT":
-            return update_plan(conn, pid, body)
+            return update_plan(conn, uid, pid, body)
     if n == 3 and parts[0] == "plans" and parts[2] == "review" and method == "GET":
-        return review(conn, get_id(parts[1]), qs)
+        return review(conn, uid, get_id(parts[1]), qs)
     if n == 3 and parts[0] == "plans" and parts[2] == "reflections" and method == "POST":
-        return create_reflection(conn, get_id(parts[1]), body)
+        return create_reflection(conn, uid, get_id(parts[1]), body)
     if parts == ["todos"]:
         if method == "GET":
-            return list_todos(conn, qs)
+            return list_todos(conn, uid, qs)
         if method == "POST":
-            return create_todo(conn, body)
+            return create_todo(conn, uid, body)
     if n == 2 and parts[0] == "todos":
         tid = get_id(parts[1])
         if method == "GET":
-            return todo_detail(conn, tid)
+            return todo_detail(conn, uid, tid)
         if method == "PUT":
-            return update_todo(conn, tid, body)
+            return update_todo(conn, uid, tid, body)
         if method == "DELETE":
-            return delete_todo(conn, tid)
+            return delete_todo(conn, uid, tid)
     if n == 3 and parts[0] == "todos" and method == "POST":
         tid = get_id(parts[1])
         if parts[2] == "complete":
-            return complete_todo(conn, tid, body)
+            return complete_todo(conn, uid, tid, body)
         if parts[2] == "reopen":
-            return reopen_todo(conn, tid)
+            return reopen_todo(conn, uid, tid)
         if parts[2] == "logs":
-            return create_log(conn, tid, body)
+            return create_log(conn, uid, tid, body)
     if parts == ["logs"] and method == "GET":
-        return list_logs(conn, qs)
+        return list_logs(conn, uid, qs)
     if n == 2 and parts[0] == "logs" and method == "DELETE":
-        return delete_log(conn, get_id(parts[1]))
+        return delete_log(conn, uid, get_id(parts[1]))
     if parts == ["notes"] and method == "GET":
-        return list_notes(conn, qs)
+        return list_notes(conn, uid, qs)
     if n == 2 and parts[0] == "notes":
         day = req_date({"date": parts[1]}, "date")
         if method == "GET":
-            return get_note(conn, day)
+            return get_note(conn, uid, day)
         if method == "PUT":
-            return put_note(conn, day, body)
+            return put_note(conn, uid, day, body)
     if parts == ["export"] and method == "GET":
-        return export_all(conn)
+        return export_all(conn, user)
     raise ApiError(404, "Not found")
 
 
@@ -750,9 +1139,10 @@ def respond(start_response, status, body_bytes, ctype, extra=()):
     return [body_bytes]
 
 
-STATUS_TEXT = {200: "200 OK", 201: "201 Created", 400: "400 Bad Request", 403: "403 Forbidden", 404: "404 Not Found",
-               405: "405 Method Not Allowed", 409: "409 Conflict", 413: "413 Payload Too Large", 429: "429 Too Many Requests",
-               500: "500 Internal Server Error"}
+STATUS_TEXT = {200: "200 OK", 201: "201 Created", 400: "400 Bad Request", 401: "401 Unauthorized",
+               403: "403 Forbidden", 404: "404 Not Found",
+               405: "405 Method Not Allowed", 409: "409 Conflict", 413: "413 Payload Too Large",
+               429: "429 Too Many Requests", 500: "500 Internal Server Error"}
 
 
 # ---------------------------------------------------------------- 자동 배포(GitHub 웹훅)
@@ -863,9 +1253,15 @@ def application(environ, start_response):
 
     qs = {k: v[0] for k, v in parse_qs(environ.get("QUERY_STRING", "")).items()}
     status, payload, extra = 200, None, [("Cache-Control", "no-store")]
+    ctx = {"environ": environ, "user": None, "headers": extra}
     conn = None
     try:
         body = {}
+        if method in ("POST", "PUT", "DELETE"):
+            # 다른 사이트가 내 쿠키를 싣고 몰래 보내는 요청(CSRF) 막기: 이 앱의 화면만 붙이는 헤더가 있어야 함.
+            # 다른 사이트의 form 은 이 헤더를 붙일 수 없고, fetch 로 붙이면 브라우저가 먼저 허락을 묻는데(CORS) 허락하지 않음.
+            if environ.get("HTTP_X_PDS") != "1":
+                raise ApiError(403, "Missing X-PDS header")
         if method in ("POST", "PUT"):
             try:
                 length = int(environ.get("CONTENT_LENGTH") or 0)
@@ -882,16 +1278,17 @@ def application(environ, start_response):
                 if not isinstance(body, dict):
                     raise ApiError(400, "Body must be a JSON object")
         conn = connect()
-        payload = route(method, path, qs, body, conn)
-        if method == "POST" and not path.endswith(("/complete", "/reopen")):
+        ctx["user"] = session_user(conn, environ)
+        payload = route(method, path, qs, body, conn, ctx)
+        if method == "POST" and not path.endswith(("/complete", "/reopen")) and not path.startswith("/api/auth/"):
             status = 201
         if path == "/api/export":
             stamp = datetime.now(KST).strftime("%Y%m%d-%H%M")
             extra.append(("Content-Disposition", f'attachment; filename="pds-diary-export-{stamp}.json"'))
     except ApiError as e:
         status, payload = e.status, {"error": e.message}
-    except sqlite3.IntegrityError as e:
-        status, payload = 409, {"error": "Violates a storage rule: " + str(e)}
+    except sqlite3.IntegrityError:
+        status, payload = 409, {"error": "Violates a storage rule"}
     except Exception:  # 내부 정보는 응답에 싣지 않음
         import traceback
         traceback.print_exc()
@@ -904,17 +1301,45 @@ def application(environ, start_response):
                    "application/json; charset=utf-8", extra)
 
 
+# ---------------------------------------------------------------- 6번 자료를 내 계정으로 옮기기
+def claim_unowned(username):
+    """주인 없는(6번 때 만든) 계획·메모를 이 계정으로 옮깁니다. PythonAnywhere 콘솔에서 한 번 실행."""
+    conn = connect()
+    try:
+        u = conn.execute("SELECT id, username FROM users WHERE username = ?", (username,)).fetchone()
+        if not u:
+            return f"No account named {username!r}. Sign up on the site first."
+        with tx(conn):
+            plans = conn.execute("UPDATE plans SET user_id = ? WHERE user_id IS NULL", (u["id"],)).rowcount
+            notes = conn.execute("UPDATE OR IGNORE day_notes SET user_id = ? WHERE user_id IS NULL",
+                                 (u["id"],)).rowcount
+            left = conn.execute("SELECT COUNT(*) FROM day_notes WHERE user_id IS NULL").fetchone()[0]
+        msg = f"Moved {plans} plan(s) and {notes} daily note(s) to {u['username']}."
+        if left:
+            msg += f" {left} note(s) were left because that day already has a note in this account."
+        return msg
+    finally:
+        conn.close()
+
+
 init_db()
 
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "claim":
+        print(claim_unowned(sys.argv[2]))
+        sys.exit(0)
     from socketserver import ThreadingMixIn
-    from wsgiref.simple_server import WSGIServer, make_server
+    from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 
     class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
         daemon_threads = True
 
+    class QuietHandler(WSGIRequestHandler):
+        def log_message(self, fmt, *args):  # 요청 줄(주소)만 남기고, 본문·쿠키는 남기지 않음
+            sys.stderr.write("%s %s\n" % (self.log_date_time_string(), fmt % args))
+
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8000"))
-    with make_server(host, port, application, server_class=ThreadingWSGIServer) as srv:
+    with make_server(host, port, application, server_class=ThreadingWSGIServer, handler_class=QuietHandler) as srv:
         print(f"Plan-Do-See Diary: http://{host}:{port}  (DB: {DB_PATH})")
         srv.serve_forever()

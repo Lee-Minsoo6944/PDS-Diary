@@ -90,13 +90,7 @@
             <p id="plan-form-carried" class="carried" hidden></p>
             <input type="hidden" name="carried_from_reflection_id">
             <label>Plan name <input name="title" required maxlength="200"></label>
-            <div class="row">
-              <label class="grow">Start date <input type="date" name="start_date" required></label>
-              <label class="grow">End date <input type="date" name="end_date" required></label>
-              <label class="grow">Priority
-                <select name="priority"><option value="1">High</option><option value="2" selected>Normal</option><option value="3">Low</option></select>
-              </label>
-            </div>
+            <p class="muted small">Dates and priority are set on each to-do, not on the plan.</p>
             <label>Completion criteria
               <textarea name="success_criteria" required maxlength="1000" rows="4" placeholder="Describe what “done” looks like for this plan."></textarea>
             </label>
@@ -122,7 +116,7 @@
             <input type="hidden" name="id">
             <label>To-do <input name="title" required maxlength="200"></label>
             <div class="row">
-              <label class="grow">Due date <input type="date" name="due_date"></label>
+              <label class="grow">Due date <input type="date" name="due_date" required></label>
               <label class="grow">Priority
                 <select name="priority"><option value="1">High</option><option value="2" selected>Normal</option><option value="3">Low</option></select>
               </label>

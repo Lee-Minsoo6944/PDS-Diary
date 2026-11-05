@@ -783,10 +783,16 @@ def create_todo(conn, uid, body):
 def update_todo(conn, uid, todo_id, body):
     t, tags = read_todo_body(body), parse_tags(body.get("tags"))
     with tx(conn):
-        todo_row(conn, uid, todo_id)  # 주인 확인이 먼저, 저장은 그다음
-        conn.execute("UPDATE todos SET title=?, note=?, due_date=?, priority=?, estimated_minutes=?, updated_at=?"
-                     " WHERE id=?", (t["title"], t["note"], t["due_date"], t["priority"],
-                                     t["estimated_minutes"], now_utc(), todo_id))
+        cur = todo_row(conn, uid, todo_id)  # 주인 확인이 먼저, 저장은 그다음
+        # 다른 계획으로 옮기기: plan_id 를 보내면 그 계획으로. 내 계획이어야 함(남의 계획은 404).
+        # 실행 기록·완료 기록은 할 일에 딸려 있어 함께 옮겨짐.
+        plan_id = cur["plan_id"]
+        if body.get("plan_id") not in (None, ""):
+            plan_id = req_int(body, "plan_id", 1, 10 ** 12)
+            plan_row(conn, uid, plan_id)
+        conn.execute("UPDATE todos SET plan_id=?, title=?, note=?, due_date=?, priority=?, estimated_minutes=?,"
+                     " updated_at=? WHERE id=?", (plan_id, t["title"], t["note"], t["due_date"], t["priority"],
+                                                  t["estimated_minutes"], now_utc(), todo_id))
         set_tags(conn, todo_id, tags)
     return todo_detail(conn, uid, todo_id)
 

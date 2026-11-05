@@ -85,6 +85,7 @@
   - **Status**: All / Open / Done / Overdue(지연) / Blocked(막힘 있음)
   - **Priority · Tag** 로 거르기, **Sort by · Order** 로 정렬
 - 줄마다 **Overdue**(마감 지남) · **Blocked**(막혔던 기록 있음) 표시가 붙습니다.
+- **다른 계획으로 옮기기**: 할 일 줄의 **Edit** → **Plan** 상자에서 옮길 계획을 고르고 **Save changes**. 그 할 일의 실행 기록·완료 기록도 함께 옮겨집니다.
 
 ## 6. Done — 실제로 한 일 기록
 ![실행 기록 화면](docs/images/logs.png)

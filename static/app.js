@@ -290,6 +290,11 @@ function editTodo(t) {
   f.elements.id.value = t.id;
   for (const k of ["title", "due_date", "priority", "estimated_minutes", "note"]) f.elements[k].value = t[k] ?? "";
   f.elements.tags.value = t.tags.join(", ");
+  // 고칠 때만 계획 고르기를 보여 줌 → 다른 계획으로 옮길 수 있음
+  const ps = clear($("#todo-plan"));
+  for (const p of S.plans) ps.append(h("option", { value: p.id }, `#${planNo(p.id)} ${p.title}`));
+  ps.value = t.plan_id;
+  $("#todo-plan-label").hidden = false;
   $("#todo-form-title").textContent = `Edit to-do #${t.id}`;
   $("#todo-submit").textContent = "Save changes";
   $("#todo-cancel").hidden = false;
@@ -299,6 +304,7 @@ function editTodo(t) {
 function resetTodoForm() {
   const f = $("#todo-form");
   f.reset(); f.elements.id.value = "";
+  $("#todo-plan-label").hidden = true;
   f.elements.due_date.value = S.today || "";  // 할 일마다 날짜를 정함 — 기본은 오늘
   $("#todo-form-title").textContent = "Add a to-do";
   $("#todo-submit").textContent = "Add";
@@ -614,10 +620,17 @@ function bind() {
     e.preventDefault();
     const f = e.target, d = formData(f), id = d.id;
     delete d.id;
-    d.plan_id = S.planId;
+    if (!id) d.plan_id = S.planId;  // 새 할 일은 지금 계획에, 고칠 때는 고른 계획으로(옮기기)
+    d.plan_id = Number(d.plan_id);
     try {
-      if (id) await api("PUT", `/api/todos/${id}`, d); else await api("POST", "/api/todos", d);
-      toast(id ? `#${id} updated` : "To-do added");
+      let msg = "To-do added";
+      if (id) {
+        const before = (await api("GET", `/api/todos/${id}`)).plan_id;
+        await api("PUT", `/api/todos/${id}`, d);
+        const to = planById(d.plan_id);
+        msg = before !== d.plan_id && to ? `#${id} moved to plan #${planNo(to.id)} ${to.title}` : `#${id} updated`;
+      } else await api("POST", "/api/todos", d);
+      toast(msg);
       resetTodoForm(); await renderTodos();
     } catch (err) { toast(err.message, true); }
   });

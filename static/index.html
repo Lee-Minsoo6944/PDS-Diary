@@ -118,6 +118,7 @@
             <label>To-do <input name="title" required maxlength="200"></label>
             <div class="row">
               <label class="grow">Due date <input type="date" name="due_date" required></label>
+              <label class="grow" id="todo-plan-label" hidden>Plan <select name="plan_id" id="todo-plan" title="Move this to-do to another plan"></select></label>
               <label class="grow">Priority
                 <select name="priority"><option value="1">High</option><option value="2" selected>Normal</option><option value="3">Low</option></select>
               </label>

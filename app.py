@@ -554,11 +554,14 @@ def delete_account(conn, user, body, ctx):
 PLAN_FIELDS = ("title", "start_date", "end_date", "priority", "success_criteria", "estimated_minutes")
 
 
-def read_plan_body(body, fallback_minutes=0):
-    # 계획에는 이제 예상 시간을 따로 적지 않고, 완료 기준(글)만 적습니다.
-    # 예전 자료와 맞추려고 열은 남겨 두고, 값이 오지 않으면 기존 값(새 계획은 0)을 씁니다.
-    if body.get("estimated_minutes") in (None, ""):
-        body = {**body, "estimated_minutes": fallback_minutes}
+def read_plan_body(body, current=None):
+    # 계획에는 이름과 완료 기준(글)만 적습니다. 날짜는 할 일마다(마감일) 정합니다.
+    # 기간·우선순위·예상 시간 열은 예전 자료·버전 기록과 맞추려고 남겨 두고, 값이 오지 않으면
+    # 고칠 때는 기존 값을, 새 계획은 기본값(오늘(KST)~오늘, 보통, 0분)을 씁니다.
+    keep = current or {"start_date": today_kst(), "end_date": today_kst(), "priority": 2, "estimated_minutes": 0}
+    for k in ("start_date", "end_date", "priority", "estimated_minutes"):
+        if body.get(k) in (None, ""):
+            body = {**body, k: keep[k]}
     p = {
         "title": req_text(body, "title", 200),
         "start_date": req_date(body, "start_date"),
@@ -635,7 +638,7 @@ def update_plan(conn, uid, plan_id, body):
     ts = now_utc()
     with tx(conn):
         cur = plan_row(conn, uid, plan_id)  # 주인 확인이 먼저, 저장은 그다음
-        p = read_plan_body(body, fallback_minutes=cur["estimated_minutes"])
+        p = read_plan_body(body, current=cur)
         if all(cur[k] == p[k] for k in PLAN_FIELDS):
             return plan_detail(conn, uid, plan_id)  # 바뀐 게 없으면 새 판을 만들지 않음
         ver = cur["current_version"] + 1
@@ -887,8 +890,11 @@ def daily_table(conn, plan, todos, logs, period_from, period_to):
     - 튀는 값: 한 건이 720분을 넘으면 표시만 하고 합계에는 넣음
     - 반올림: 평균은 소수 첫째 자리까지, 사사오입(ROUND_HALF_UP)
     """
-    d_from = period_from or plan["start_date"]
-    d_to = period_to or min(plan["end_date"], today_kst())
+    # 기간을 따로 고르지 않으면: 계획 시작일(새 계획은 만든 날) 또는 그보다 이른 마감일·기록부터 오늘(KST)까지
+    first = [plan["start_date"]] + [t["due_date"] for t in todos if t["due_date"]] \
+        + [kst_date_of(w["started_at"]) for w in logs]
+    d_from = period_from or min(first)
+    d_to = period_to or today_kst()
     if d_to < d_from:
         d_to = d_from
     start = date.fromisoformat(d_from)

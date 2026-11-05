@@ -243,6 +243,22 @@ class PDS(unittest.TestCase):
         self.assertEqual(u["estimated_minutes"], 600)
         self.assertEqual(u["versions"][-1]["success_criteria"], "글로 바꿈")
 
+    def test_plan_needs_only_name_and_criteria(self):
+        # 계획에는 날짜·우선순위를 적지 않음 — 날짜는 할 일마다 정함
+        p = ok("POST", "/api/plans", {"title": "날짜 없는 계획", "success_criteria": "끝까지 한다"})
+        self.assertEqual((p["start_date"], p["end_date"], p["priority"]), (TODAY, TODAY, 2))
+        # 고칠 때 날짜·우선순위를 보내지 않으면 원래 값이 그대로 (예전 계획도 안전)
+        u = ok("PUT", f"/api/plans/{self.pid}", {"title": "이름만 바꿈", "success_criteria": "주 3회"})
+        self.assertEqual((u["start_date"], u["end_date"], u["priority"]), (D(-7), D(7), 1))
+        self.assertEqual(u["current_version"], 2)
+        # 계획 기간과 상관없이, 어느 날짜의 할 일이든 넣을 수 있음
+        t = self.todo(title="한참 뒤", due_date=D(60), plan_id=p["id"])
+        self.assertEqual(t["due_date"], D(60))
+        # 돌아보기 날짜별 표: 따로 고르지 않으면 이른 날부터 오늘(KST)까지
+        self.todo(title="지난주", due_date=D(-3), plan_id=p["id"])
+        days = [r["date"] for r in ok("GET", f"/api/plans/{p['id']}/review")["daily"]["rows"]]
+        self.assertEqual((days[0], days[-1]), (D(-3), TODAY))
+
     def test_calendar_range_and_day_notes(self):
         a = self.todo(title="달력 안", due_date=D(1))
         self.todo(title="달력 밖", due_date=D(40))

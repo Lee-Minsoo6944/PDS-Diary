@@ -88,18 +88,14 @@ async function go(tab, ev = null) { S.tab = tab; S.ev = ev; writeHash(); await r
 async function loadPlans() {
   S.plans = await api("GET", "/api/plans");
   const sel = clear($("#plan-select"));
-  for (const p of S.plans) sel.append(h("option", { value: p.id }, `#${p.id} ${p.title} (${p.start_date}~${p.end_date})`));
+  for (const p of S.plans) sel.append(h("option", { value: p.id }, `#${p.id} ${p.title}`));
   if (!S.plans.find((p) => p.id === S.planId)) S.planId = S.plans.length ? S.plans[0].id : null;
   sel.value = S.planId ?? "";
 }
 
-// Which plan a to-do on day d should go into: the current plan if its period covers d,
-// otherwise the first plan whose period covers d, otherwise the current plan.
-function planForDay(d) {
-  const covers = (p) => p.start_date <= d && d <= p.end_date;
-  const cur = S.plans.find((p) => p.id === S.planId);
-  if (cur && covers(cur)) return cur;
-  return S.plans.find(covers) || cur || S.plans[0] || null;
+// Which plan a to-do on day d goes into: plans have no dates, so the plan picked at the top.
+function planForDay(_d) {
+  return S.plans.find((p) => p.id === S.planId) || S.plans[0] || null;
 }
 function planById(id) { return S.plans.find((p) => p.id === id) || null; }
 function planDot(id) {
@@ -138,23 +134,20 @@ function renderPlan() {
     h("h2", {}, `#${p.id} ${p.title}`, h("small", { class: "muted" }, `  version ${p.current_version}`)),
     p.carried_from ? h("p", { class: "carried" }, `Improvement carried over from reflection #${p.carried_from.id}: `, h("b", {}, p.carried_from.improvement)) : "",
     h("dl", { class: "grid" },
-      h("dt", {}, "Period"), h("dd", {}, `${p.start_date} – ${p.end_date}`),
-      h("dt", {}, "Priority"), h("dd", {}, PRI[p.priority]),
       h("dt", {}, "Completion criteria"), h("dd", {}, p.success_criteria),
       h("dt", {}, "Created"), h("dd", {}, showUTC(p.created_at)),
     ),
     h("button", { type: "button", onclick: () => openPlanForm(p) }, "Edit plan"),
   );
   const tbl = h("table", { class: "list" },
-    h("thead", {}, h("tr", {}, ["Ver.", "Name", "Period", "Priority", "Completion criteria", "Reason", "Saved"].map((x) => h("th", {}, x)))));
+    h("thead", {}, h("tr", {}, ["Ver.", "Name", "Completion criteria", "Reason", "Saved"].map((x) => h("th", {}, x)))));
   const tb = h("tbody");
   p.versions.forEach((v, i) => {
     const prev = p.versions[i - 1];
     const cell = (k, text) => h("td", { class: prev && prev[k] !== v[k] ? "changed" : null }, text);
     tb.append(h("tr", {},
       h("td", {}, `v${v.version}${v.version === 1 ? " (original)" : ""}`),
-      cell("title", v.title), h("td", { class: prev && (prev.start_date !== v.start_date || prev.end_date !== v.end_date) ? "changed" : null }, `${v.start_date} – ${v.end_date}`),
-      cell("priority", PRI[v.priority]), cell("success_criteria", v.success_criteria),
+      cell("title", v.title), cell("success_criteria", v.success_criteria),
       h("td", {}, v.change_note), h("td", {}, showUTC(v.created_at))));
   });
   tbl.append(tb);
@@ -171,7 +164,7 @@ function openPlanForm(plan, carried = null) {
   c.hidden = !carried;
   f.elements.carried_from_reflection_id.value = carried ? carried.id : "";
   if (carried) c.textContent = `Improvement carried over from reflection #${carried.id}: ${carried.improvement}`;
-  if (plan) for (const k of ["title", "start_date", "end_date", "priority", "success_criteria"]) f.elements[k].value = plan[k];
+  if (plan) for (const k of ["title", "success_criteria"]) f.elements[k].value = plan[k];
   if (carried && !plan) f.elements.success_criteria.value = `(Applying improvement) ${carried.improvement}`;
   f.elements.title.focus();
 }
@@ -191,6 +184,7 @@ async function evidenceIds(key) {
 }
 
 async function renderTodos() {
+  { const f = $("#todo-form"); if (!f.elements.id.value && !f.elements.due_date.value) f.elements.due_date.value = S.today || ""; }
   const all = await api("GET", `/api/todos?plan_id=${S.planId}`);
   // The tag list is built from all to-dos in the plan
   const tagSel = $("#f-tag"), cur = tagSel.value;
@@ -288,6 +282,7 @@ function editTodo(t) {
 function resetTodoForm() {
   const f = $("#todo-form");
   f.reset(); f.elements.id.value = "";
+  f.elements.due_date.value = S.today || "";  // 할 일마다 날짜를 정함 — 기본은 오늘
   $("#todo-form-title").textContent = "Add a to-do";
   $("#todo-submit").textContent = "Add";
   $("#todo-cancel").hidden = true;

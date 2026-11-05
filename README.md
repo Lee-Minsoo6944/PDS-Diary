@@ -38,24 +38,17 @@ py -m unittest discover -s tests -v
 5. Reload → `https://<내아이디>.pythonanywhere.com` 을 시크릿 창에서 열어 확인.
 
 ### 자동 배포 (GitHub에 푸시하면 바로 반영)
-GitHub가 푸시마다 `POST /api/deploy` 로 알려 주고, 서명이 맞으면 서버가 `git pull --ff-only` 후 WSGI 파일을 건드려 웹 앱을 다시 시작합니다. 처음 한 번만 설정합니다.
-1. PythonAnywhere Bash 콘솔에서 웹훅 암호를 만듭니다(화면에 나온 값을 복사해 둡니다).
-   ```bash
-   python3 -c "import secrets; print(secrets.token_hex(32))" | tee ~/.pds_deploy_secret
-   chmod 600 ~/.pds_deploy_secret
-   ```
-2. GitHub 저장소 → Settings → Webhooks → Add webhook
-   - Payload URL: `https://<내아이디>.pythonanywhere.com/api/deploy`
-   - Content type: `application/json`
-   - Secret: 1번에서 복사한 값
-   - Just the push event → Add webhook
-3. Web 탭에서 Reload 한 번. 이후로는 `main` 에 푸시만 하면 됩니다. GitHub Webhooks 화면의 Recent Deliveries 에서 결과(200이면 성공)를 볼 수 있습니다.
+GitHub가 푸시마다 `POST /api/deploy` 로 알려 주면, 서버가 `git pull --ff-only` 하고 코드가 바뀐 때만 WSGI 파일을 건드려 웹 앱을 다시 시작합니다. **비밀값은 쓰지 않습니다.**
+- 받아오는 곳은 이 저장소의 `origin`(내 GitHub 저장소)뿐이라, 누가 이 주소를 불러도 이미 GitHub에 올라간 코드만 받습니다.
+- 15초 안에 다시 부르면 무시(429), 바뀐 게 없으면 다시 시작하지 않습니다.
+- PythonAnywhere(WSGI 파일이 있는 곳)에서만 켜지고, 내 PC에서 실행할 때는 404입니다.
 
-- 암호 파일이 없으면 `/api/deploy` 는 404로 꺼져 있습니다(로컬 실행도 마찬가지).
-- 서버 폴더의 파일을 직접 고치면 `git pull` 이 멈춥니다(응답 500에 git 메시지가 담김). 서버에서는 고치지 마세요.
-- 다른 위치의 WSGI 파일을 쓰면 환경변수 `PDS_WSGI_FILE`, 암호 파일 위치는 `PDS_DEPLOY_SECRET_FILE` 로 바꿀 수 있습니다.
+처음 한 번만: GitHub 저장소 → Settings → Webhooks → Add webhook
+- Payload URL: `https://<내아이디>.pythonanywhere.com/api/deploy`, Content type: `application/json`, Secret: 비움, Just the push event
 
-비밀값(API 키 등)은 저장소·응답 어디에도 없습니다. 자동 배포용 웹훅 암호 하나만 서버의 `~/.pds_deploy_secret` 과 GitHub 웹훅 설정에 있고, 저장소에는 들어가지 않습니다.
+결과는 GitHub Webhooks 화면의 Recent Deliveries 에서 볼 수 있습니다(200이면 성공). 서버 폴더의 파일을 직접 고치면 `git pull` 이 멈추니(500에 git 메시지) 서버에서는 고치지 마세요. WSGI 파일 위치가 다르면 환경변수 `PDS_WSGI_FILE` 로 바꿀 수 있습니다.
+
+비밀값(API 키 등)은 쓰지 않습니다. 저장소·배포 파일·응답 어디에도 비밀값이 없습니다.
 
 ## 시간 규칙
 - 시각: UTC로 저장(`…Z`), 화면은 대한민국 시간(KST, UTC+9)

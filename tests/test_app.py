@@ -242,58 +242,59 @@ class PDS(unittest.TestCase):
 
 
 class Deploy(unittest.TestCase):
-    """자동 배포: 서명이 맞을 때만 git pull + 다시 시작. 실제 git/재시작은 가짜로 바꿔 확인합니다."""
+    """자동 배포: 암호 없이, 내 저장소에서만 받아오고, 바뀐 때만 다시 시작. 실제 git/재시작은 가짜로 바꿔 확인."""
 
     def setUp(self):
-        self.secret_file = os.path.join(TMP, "deploy_secret")
-        with open(self.secret_file, "w") as f:
-            f.write("test-secret\n")
+        self.wsgi = os.path.join(TMP, "fake_wsgi.py")
+        open(self.wsgi, "w").close()
         self.calls = []
-        self._saved = (app.DEPLOY_SECRET_FILE, app.run_git_pull, app.reload_later)
-        app.DEPLOY_SECRET_FILE = self.secret_file
-        app.run_git_pull = lambda: (self.calls.append("pull"), (0, "Fast-forward"))[1]
+        self.changed = True
+        self._saved = (app.wsgi_file, app.run_git_pull, app.reload_later)
+        app.wsgi_file = lambda: self.wsgi
+        app.run_git_pull = lambda: (self.calls.append("pull"), (0, "Fast-forward", self.changed))[1]
         app.reload_later = lambda: self.calls.append("reload")
+        app._deploy_state["last"] = 0.0
 
     def tearDown(self):
-        app.DEPLOY_SECRET_FILE, app.run_git_pull, app.reload_later = self._saved
+        app.wsgi_file, app.run_git_pull, app.reload_later = self._saved
 
-    def hook(self, body, event="push", secret=b"test-secret", sig=None):
-        import hashlib
-        import hmac
+    def hook(self, body, event="push", method="POST"):
         raw = json.dumps(body).encode()
-        if sig is None:
-            sig = "sha256=" + hmac.new(secret, raw, hashlib.sha256).hexdigest()
-        env = {"REQUEST_METHOD": "POST", "PATH_INFO": "/api/deploy", "QUERY_STRING": "",
-               "CONTENT_LENGTH": str(len(raw)), "wsgi.input": io.BytesIO(raw),
-               "HTTP_X_HUB_SIGNATURE_256": sig, "HTTP_X_GITHUB_EVENT": event}
+        env = {"REQUEST_METHOD": method, "PATH_INFO": "/api/deploy", "QUERY_STRING": "",
+               "CONTENT_LENGTH": str(len(raw)), "wsgi.input": io.BytesIO(raw), "HTTP_X_GITHUB_EVENT": event}
         out = {}
         data = b"".join(app.application(env, lambda s, h: out.update(status=int(s.split()[0]))))
         return out["status"], json.loads(data)
 
-    def test_good_signature_pulls_and_reloads(self):
+    def test_push_to_main_pulls_and_reloads(self):
         s, d = self.hook({"ref": "refs/heads/main"})
-        self.assertEqual((s, d["ok"]), (200, True))
+        self.assertEqual((s, d["ok"], d["reloading"]), (200, True, True))
         self.assertEqual(self.calls, ["pull", "reload"])
 
-    def test_bad_signature_rejected(self):
-        s, _ = self.hook({"ref": "refs/heads/main"}, secret=b"wrong")
-        self.assertEqual(s, 403)
-        s, _ = self.hook({"ref": "refs/heads/main"}, sig="")
-        self.assertEqual(s, 403)
-        self.assertEqual(self.calls, [])
+    def test_no_change_means_no_reload(self):
+        self.changed = False
+        s, d = self.hook({"ref": "refs/heads/main"})
+        self.assertEqual((s, d["reloading"]), (200, False))
+        self.assertEqual(self.calls, ["pull"])
 
-    def test_other_branch_and_ping_do_nothing(self):
+    def test_repeated_calls_are_throttled(self):
+        self.assertEqual(self.hook({"ref": "refs/heads/main"})[0], 200)
+        self.assertEqual(self.hook({"ref": "refs/heads/main"})[0], 429)
+        self.assertEqual(self.calls, ["pull", "reload"])
+
+    def test_other_branch_ping_and_get_do_nothing(self):
         self.assertEqual(self.hook({"ref": "refs/heads/dev"})[0], 200)
         self.assertEqual(self.hook({"zen": "hi"}, event="ping")[1].get("pong"), True)
+        self.assertEqual(self.hook({"ref": "refs/heads/main"}, method="GET")[0], 404)
         self.assertEqual(self.calls, [])
 
-    def test_off_without_secret_file(self):
-        os.remove(self.secret_file)
+    def test_off_when_not_on_pythonanywhere(self):
+        os.remove(self.wsgi)
         self.assertEqual(self.hook({"ref": "refs/heads/main"})[0], 404)
         self.assertEqual(self.calls, [])
 
     def test_failed_pull_does_not_reload(self):
-        app.run_git_pull = lambda: (1, "error: Your local changes would be overwritten")
+        app.run_git_pull = lambda: (1, "error: Your local changes would be overwritten", False)
         s, d = self.hook({"ref": "refs/heads/main"})
         self.assertEqual((s, d["ok"]), (500, False))
         self.assertEqual(self.calls, [])

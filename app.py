@@ -751,26 +751,21 @@ def respond(start_response, status, body_bytes, ctype, extra=()):
 
 
 STATUS_TEXT = {200: "200 OK", 201: "201 Created", 400: "400 Bad Request", 403: "403 Forbidden", 404: "404 Not Found",
-               405: "405 Method Not Allowed", 409: "409 Conflict", 413: "413 Payload Too Large",
+               405: "405 Method Not Allowed", 409: "409 Conflict", 413: "413 Payload Too Large", 429: "429 Too Many Requests",
                500: "500 Internal Server Error"}
 
 
 # ---------------------------------------------------------------- 자동 배포(GitHub 웹훅)
-# GitHub에 푸시하면 GitHub가 POST /api/deploy 로 알려 줍니다.
-# 서명(X-Hub-Signature-256)이 서버에만 있는 암호와 맞을 때만 git pull 후 웹 앱을 다시 시작합니다.
-# 암호 파일이 없으면 이 주소는 없는 것처럼(404) 동작합니다. 암호는 저장소에 넣지 않습니다.
-DEPLOY_SECRET_FILE = os.environ.get("PDS_DEPLOY_SECRET_FILE", os.path.expanduser("~/.pds_deploy_secret"))
+# GitHub에 푸시하면 GitHub가 POST /api/deploy 로 알려 주고, 서버가 git pull 후 웹 앱을 다시 시작합니다.
+# 암호(비밀값)는 쓰지 않습니다. 대신 안전하게 만드는 규칙:
+# - 받아오는 곳은 이 저장소의 origin(내 GitHub 저장소) 하나뿐 → 누가 불러도 이미 올라간 코드만 받음
+# - --ff-only: 서버 폴더를 덮어쓰거나 합치지 않음
+# - 코드가 실제로 바뀐 때만 다시 시작, 짧은 시간에 여러 번 부르면 무시(429)
+# - PythonAnywhere(WSGI 파일이 있는 곳)에서만 켜짐. 내 PC에서 실행할 때는 404
 DEPLOY_BRANCH = "refs/heads/main"
 DEPLOY_MAX_BODY = 5 * 1024 * 1024
-
-
-def deploy_secret():
-    try:
-        with open(DEPLOY_SECRET_FILE, "rb") as f:
-            s = f.read().strip()
-        return s or None
-    except OSError:
-        return None
+DEPLOY_COOLDOWN = 15  # 초
+_deploy_state = {"last": 0.0}
 
 
 def wsgi_file():
@@ -782,10 +777,22 @@ def wsgi_file():
     return f"/var/www/{getpass.getuser().lower()}_pythonanywhere_com_wsgi.py"
 
 
-def run_git_pull():
+def deploy_enabled():
+    return os.path.exists(wsgi_file())
+
+
+def git(*args):
     import subprocess
-    r = subprocess.run(["git", "pull", "--ff-only"], cwd=BASE_DIR, capture_output=True, text=True, timeout=90)
+    r = subprocess.run(["git", *args], cwd=BASE_DIR, capture_output=True, text=True, timeout=90)
     return r.returncode, (r.stdout + r.stderr).strip()[-1500:]
+
+
+def run_git_pull():
+    """(성공 여부 코드, git 메시지, 코드가 바뀌었는지)"""
+    _, before = git("rev-parse", "HEAD")
+    code, out = git("pull", "--ff-only")
+    _, after = git("rev-parse", "HEAD")
+    return code, out, code == 0 and before != after
 
 
 def reload_later():
@@ -798,10 +805,8 @@ def reload_later():
 
 
 def handle_deploy(environ):
-    import hashlib
-    import hmac
-    secret = deploy_secret()
-    if environ.get("REQUEST_METHOD") != "POST" or not secret:
+    import time
+    if environ.get("REQUEST_METHOD") != "POST" or not deploy_enabled():
         return 404, {"error": "Not found"}
     try:
         length = int(environ.get("CONTENT_LENGTH") or 0)
@@ -810,9 +815,6 @@ def handle_deploy(environ):
     if length > DEPLOY_MAX_BODY:
         return 413, {"error": "Request body is too large"}
     raw = environ["wsgi.input"].read(length) if length else b""
-    expected = "sha256=" + hmac.new(secret, raw, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, environ.get("HTTP_X_HUB_SIGNATURE_256", "")):
-        return 403, {"error": "Bad signature"}
     event = environ.get("HTTP_X_GITHUB_EVENT", "")
     if event == "ping":
         return 200, {"ok": True, "pong": True}
@@ -824,11 +826,16 @@ def handle_deploy(environ):
         return 400, {"error": "Body is not valid JSON"}
     if ref != DEPLOY_BRANCH:
         return 200, {"ok": True, "skipped": f"ref {ref}"}
-    code, out = run_git_pull()
+    now = time.monotonic()
+    if now - _deploy_state["last"] < DEPLOY_COOLDOWN:
+        return 429, {"ok": False, "error": "Too soon, try again shortly"}
+    _deploy_state["last"] = now
+    code, out, changed = run_git_pull()
     if code != 0:
         return 500, {"ok": False, "git": out}
-    reload_later()
-    return 200, {"ok": True, "git": out, "reloading": True}
+    if changed:
+        reload_later()
+    return 200, {"ok": True, "git": out, "reloading": changed}
 
 
 def application(environ, start_response):

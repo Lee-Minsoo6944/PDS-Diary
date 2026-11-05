@@ -113,7 +113,11 @@ async function render() {
   for (const s of document.querySelectorAll(".tab")) s.hidden = s.id !== "tab-" + S.tab;
   $("#plan-select").value = S.planId ?? "";
   S.plan = S.planId ? await api("GET", `/api/plans/${S.planId}`) : null;
-  if (!S.plan && !["plan", "account", "calendar"].includes(S.tab)) { S.tab = "plan"; return render(); }
+  if (!S.plan && !["plan", "account", "calendar"].includes(S.tab)) {
+    // To-dos·Done·Review 는 계획에 딸린 화면이라, 계획이 없으면 Plan 으로 보내고 이유를 알려 줌
+    toast("Make a plan first — To-dos, Done and Review show the items of a plan.");
+    S.tab = "plan"; return render();
+  }
   if (S.tab === "calendar") await renderCalendar();
   if (S.tab === "plan") renderPlan();
   if (S.tab === "todos") await renderTodos();

@@ -262,7 +262,7 @@ button.danger-fill:hover { background: #8f2c22; }
   body { overflow: auto; height: auto; }
   .desk-head { padding-right: 0; flex-wrap: wrap; }
   .book-wrap { flex-direction: column-reverse; flex: none; }
-  .ribbons { flex-direction: row; padding: 0; margin: 0; overflow-x: auto; }
+  .ribbons { flex-direction: row; flex-wrap: wrap; padding: 0; margin: 0; overflow: visible; } /* 스크롤바(화살표) 없이, 좁으면 다음 줄로 */
   .ribbons button { width: auto; border-radius: 8px 8px 0 0; padding: 8px 12px; }
   .ribbons button:hover { transform: none; }
   .ribbons button.on { transform: translateY(3px); }
@@ -284,6 +284,8 @@ button.danger-fill:hover { background: #8f2c22; }
   .book { padding: 8px; }
   .page { padding: 18px 16px 14px; }
   .cal-grid { grid-auto-rows: minmax(64px, auto); }
+  .ribbons { gap: 3px; }
+  .ribbons button { padding: 7px 8px; font-size: .72rem; white-space: nowrap; }
   .cell .add { display: none; }            /* 좁은 칸에서 날짜와 겹침 → 날짜를 눌러 아래에서 추가 */
   .day-add { flex-wrap: wrap; }
   .day-add input[name="title"] { flex: 1 1 100%; }

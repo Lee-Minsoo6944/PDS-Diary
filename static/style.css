@@ -207,6 +207,8 @@ td.changed { background: var(--changed); }
 .loglist li { padding: 8px 2px; border-bottom: 1px solid var(--line); font-size: .86rem; }
 .loglist li .when { color: var(--muted); font-size: .74rem; font-variant-numeric: tabular-nums; }
 .loglist li.sum { font-weight: 600; border-bottom: none; }
+.page a:not(.button) { color: var(--accent); text-decoration: none; }
+.page a:not(.button):hover { text-decoration: underline; }
 
 /* ---------- Review ---------- */
 .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }

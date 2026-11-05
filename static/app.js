@@ -88,7 +88,7 @@ async function go(tab, ev = null) { S.tab = tab; S.ev = ev; writeHash(); await r
 async function loadPlans() {
   S.plans = await api("GET", "/api/plans");
   const sel = clear($("#plan-select"));
-  for (const p of S.plans) sel.append(h("option", { value: p.id }, `#${p.id} ${p.title}`));
+  for (const p of S.plans) sel.append(h("option", { value: p.id }, `#${planNo(p.id)} ${p.title}`));
   if (!S.plans.find((p) => p.id === S.planId)) S.planId = S.plans.length ? S.plans[S.plans.length - 1].id : null;  // 목록은 오름차순, 처음엔 가장 최근 계획
   sel.value = S.planId ?? "";
 }
@@ -98,6 +98,8 @@ function planForDay(_d) {
   return S.plans.find((p) => p.id === S.planId) || S.plans[0] || null;
 }
 function planById(id) { return S.plans.find((p) => p.id === id) || null; }
+// 화면에 보이는 계획 번호: DB 번호(모든 계정이 같이 씀) 대신 내 계획 안에서의 순서 1, 2, 3 …
+function planNo(id) { const i = S.plans.findIndex((p) => p.id === id); return i < 0 ? "?" : i + 1; }
 // 계획마다 정해진 색: 만든 순서(번호 오름차순)로 8가지 색을 차례로 씀 → 계획 8개까지 겹치지 않음
 function planColor(id) {
   const i = S.plans.map((p) => p.id).sort((a, b) => a - b).indexOf(id);
@@ -105,7 +107,7 @@ function planColor(id) {
 }
 function planDot(id) {
   const p = planById(id);
-  return h("i", { class: `pdot ${planColor(id)}`, title: p ? `Plan #${p.id} ${p.title}` : `Plan #${id}` });
+  return h("i", { class: `pdot ${planColor(id)}`, title: p ? `Plan #${planNo(p.id)} ${p.title}` : "Plan" });
 }
 // 달력 위 범례: 계획 이름을 색과 함께, 누르면 그 계획을 고름
 function renderLegend() {
@@ -113,7 +115,7 @@ function renderLegend() {
   box.hidden = S.plans.length < 2;
   for (const p of [...S.plans].sort((a, b) => a.id - b.id))
     box.append(h("button", { type: "button", class: `chip ${planColor(p.id)}${p.id === S.planId ? " on" : ""}`,
-      title: `Pick plan #${p.id}`, onclick: () => { S.planId = p.id; S.ev = null; writeHash(); render(); } },
+      title: `Pick plan #${planNo(p.id)}`, onclick: () => { S.planId = p.id; S.ev = null; writeHash(); render(); } },
       h("i", { class: `pdot ${planColor(p.id)}` }), p.title));
 }
 
@@ -146,7 +148,7 @@ function renderPlan() {
   const versions = clear($("#plan-versions"));
   if (!p) { if (!S.editingPlan) openPlanForm(null); return; }
   view.append(
-    h("h2", {}, `#${p.id} ${p.title}`, h("small", { class: "muted" }, `  version ${p.current_version}`)),
+    h("h2", {}, `#${planNo(p.id)} ${p.title}`, h("small", { class: "muted" }, `  version ${p.current_version}`)),
     p.carried_from ? h("p", { class: "carried" }, `Improvement carried over from reflection #${p.carried_from.id}: `, h("b", {}, p.carried_from.improvement)) : "",
     h("dl", { class: "grid" },
       h("dt", {}, "Completion criteria"), h("dd", {}, p.success_criteria),
@@ -173,7 +175,7 @@ function openPlanForm(plan, carried = null) {
   S.editingPlan = true;
   const f = $("#plan-form");
   f.reset(); f.hidden = false; f.dataset.id = plan ? plan.id : "";
-  $("#plan-form-title").textContent = plan ? `Edit plan #${plan.id}` : "New plan";
+  $("#plan-form-title").textContent = plan ? `Edit plan #${planNo(plan.id)}` : "New plan";
   $("#change-note-label").hidden = !plan;
   const c = $("#plan-form-carried");
   c.hidden = !carried;
@@ -234,7 +236,7 @@ function todoItem(t, { showDue = false, showPlan = false } = {}) {
   const done = t.status === "done";
   const meta = [
     `#${t.id}`,
-    showPlan ? (planById(t.plan_id)?.title || `Plan #${t.plan_id}`) : null,
+    showPlan ? (planById(t.plan_id)?.title || "Plan") : null,
     showDue ? `Due ${t.due_date || "—"}` : null,
     PRI[t.priority],
     `Est. ${t.estimated_minutes} min`,
@@ -308,7 +310,7 @@ async function showTodo(id) {
   box.hidden = false;
   box.append(
     h("h3", {}, `To-do #${t.id} · ${t.title}`),
-    h("p", { class: "muted" }, `Plan #${t.plan_id} · Due ${t.due_date || "—"} · ${PRI[t.priority]} priority · Est. ${t.estimated_minutes} min · Actual ${t.actual_minutes} min`),
+    h("p", { class: "muted" }, `Plan #${planNo(t.plan_id)} ${planById(t.plan_id)?.title || ""} · Due ${t.due_date || "—"} · ${PRI[t.priority]} priority · Est. ${t.estimated_minutes} min · Actual ${t.actual_minutes} min`),
     h("h3", {}, `Work logs (${t.logs.length})`),
     t.logs.length ? h("ul", {}, t.logs.map((w) => h("li", {},
       `#${w.id} ${showUTC(w.started_at)} → ${showUTC(w.ended_at)} · ${w.actual_minutes} min`,
@@ -403,7 +405,7 @@ function renderDaily(d) {
 
 async function renderReview() {
   const r = await api("GET", `/api/plans/${S.planId}/review?${reviewQuery()}`);
-  $("#review-meta").textContent = `#${r.plan_id} ${r.plan_title} · Today (KST) ${r.today_kst}` +
+  $("#review-meta").textContent = `#${planNo(r.plan_id)} ${r.plan_title} · Today (KST) ${r.today_kst}` +
     (r.period.from || r.period.to ? ` · Due ${r.period.from || "start"} – ${r.period.to || "end"}` : " · All dates");
   const box = clear($("#stats"));
   for (const [k, label] of Object.entries(STAT_LABEL)) {
@@ -469,7 +471,7 @@ async function renderCalendar() {
     for (const t of items.slice(0, SHOW)) {
       const done = t.status === "done";
       list.append(h("li", { class: [done ? "done" : t.overdue ? "overdue" : null, "ptint", planColor(t.plan_id)].filter(Boolean).join(" "),
-        title: `#${t.id} ${t.title} (${planById(t.plan_id)?.title || "plan #" + t.plan_id})` },
+        title: `#${t.id} ${t.title} (${planById(t.plan_id)?.title || "plan"})` },
         h("input", { type: "checkbox", checked: done, "aria-label": `Complete ${t.title}`,
           onclick: (e) => { e.stopPropagation(); e.preventDefault(); done ? reopen(t.id) : complete(t.id); } }),
         h("span", {}, t.title)));
@@ -491,7 +493,7 @@ function openCellInput(cell, d) {
   if (cell.querySelector(".cell-input")) return cell.querySelector(".cell-input").focus();
   const input = h("input", { class: "cell-input", maxlength: 200,
     placeholder: S.plans.length > 1 ? `To-do → ${plan.title}` : "To-do + Enter",
-    title: `Goes into plan #${plan.id} ${plan.title}. To pick another plan, use the form on the right page.` });
+    title: `Goes into plan #${planNo(plan.id)} ${plan.title}. To pick another plan, use the form on the right page.` });
   input.addEventListener("click", (e) => e.stopPropagation());
   input.addEventListener("keydown", async (e) => {
     if (e.key === "Escape") return input.remove();
@@ -534,7 +536,7 @@ async function renderDay() {
   for (const t of data.items) ul.append(todoItem(t, { showPlan: S.plans.length > 1 }));
   // Plan picker: default to the plan covering this day; keep the user's pick while they stay on the same day.
   const sel = clear($("#day-plan"));
-  for (const p of S.plans) sel.append(h("option", { value: p.id }, `#${p.id} ${p.title}`));
+  for (const p of S.plans) sel.append(h("option", { value: p.id }, `#${planNo(p.id)} ${p.title}`));
   const keep = S.dayPlan.day === d && planById(S.dayPlan.id);
   const def = keep || planForDay(d);
   sel.value = def ? def.id : "";

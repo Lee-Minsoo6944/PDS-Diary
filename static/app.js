@@ -17,7 +17,7 @@ const S = {
   user: null, plans: [], planId: null, plan: null, tab: "calendar", ev: null, today: "", completeKeys: new Map(), editingPlan: false,
   month: "", day: "", memo: { day: "", timer: null, dirty: false }, dayPlan: { day: "", id: null },
 };
-const PLAN_COLORS = 6; // matches .pc0 … .pc5 in style.css
+const PLAN_COLORS = 8; // matches .pc0 … .pc7 in style.css
 const WEEK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 // ---------------------------------------------------------------- helpers
@@ -98,16 +98,31 @@ function planForDay(_d) {
   return S.plans.find((p) => p.id === S.planId) || S.plans[0] || null;
 }
 function planById(id) { return S.plans.find((p) => p.id === id) || null; }
+// 계획마다 정해진 색: 만든 순서(번호 오름차순)로 8가지 색을 차례로 씀 → 계획 8개까지 겹치지 않음
+function planColor(id) {
+  const i = S.plans.map((p) => p.id).sort((a, b) => a - b).indexOf(id);
+  return `pc${(i < 0 ? id : i) % PLAN_COLORS}`;
+}
 function planDot(id) {
-  if (S.plans.length < 2) return null;
   const p = planById(id);
-  return h("i", { class: `pdot pc${id % PLAN_COLORS}`, title: p ? `Plan #${p.id} ${p.title}` : `Plan #${id}` });
+  return h("i", { class: `pdot ${planColor(id)}`, title: p ? `Plan #${p.id} ${p.title}` : `Plan #${id}` });
+}
+// 달력 위 범례: 계획 이름을 색과 함께, 누르면 그 계획을 고름
+function renderLegend() {
+  const box = clear($("#plan-legend"));
+  box.hidden = S.plans.length < 2;
+  for (const p of [...S.plans].sort((a, b) => a.id - b.id))
+    box.append(h("button", { type: "button", class: `chip ${planColor(p.id)}${p.id === S.planId ? " on" : ""}`,
+      title: `Pick plan #${p.id}`, onclick: () => { S.planId = p.id; S.ev = null; writeHash(); render(); } },
+      h("i", { class: `pdot ${planColor(p.id)}` }), p.title));
 }
 
 async function render() {
   for (const b of document.querySelectorAll("#tabs button")) b.classList.toggle("on", b.dataset.tab === S.tab);
   for (const s of document.querySelectorAll(".tab")) s.hidden = s.id !== "tab-" + S.tab;
   $("#plan-select").value = S.planId ?? "";
+  $("#plan-swatch").className = S.planId ? `pdot big ${planColor(S.planId)}` : "pdot big";
+  renderLegend();
   S.plan = S.planId ? await api("GET", `/api/plans/${S.planId}`) : null;
   if (!S.plan && !["plan", "account", "calendar"].includes(S.tab)) {
     // To-dos·Done·Review 는 계획에 딸린 화면이라, 계획이 없으면 Plan 으로 보내고 이유를 알려 줌
@@ -225,7 +240,7 @@ function todoItem(t, { showDue = false, showPlan = false } = {}) {
     `Est. ${t.estimated_minutes} min`,
     `Actual ${t.actual_minutes} min (${t.log_count} log${t.log_count === 1 ? "" : "s"})`,
   ].filter(Boolean).join(" · ");
-  return h("li", { class: done ? "done" : null, id: `todo-${t.id}` },
+  return h("li", { class: [done && "done", "pbar", planColor(t.plan_id)].filter(Boolean).join(" "), id: `todo-${t.id}` },
     h("input", { type: "checkbox", checked: done, title: done ? "Mark as open" : "Mark as done",
       "aria-label": `Complete ${t.title}`, onclick: (e) => { e.preventDefault(); done ? reopen(t.id) : complete(t.id); } }),
     h("div", { class: "body" },
@@ -453,10 +468,10 @@ async function renderCalendar() {
     const SHOW = 4;
     for (const t of items.slice(0, SHOW)) {
       const done = t.status === "done";
-      list.append(h("li", { class: done ? "done" : t.overdue ? "overdue" : null, title: `#${t.id} ${t.title} (plan #${t.plan_id})` },
+      list.append(h("li", { class: [done ? "done" : t.overdue ? "overdue" : null, "ptint", planColor(t.plan_id)].filter(Boolean).join(" "),
+        title: `#${t.id} ${t.title} (${planById(t.plan_id)?.title || "plan #" + t.plan_id})` },
         h("input", { type: "checkbox", checked: done, "aria-label": `Complete ${t.title}`,
           onclick: (e) => { e.stopPropagation(); e.preventDefault(); done ? reopen(t.id) : complete(t.id); } }),
-        planDot(t.plan_id),
         h("span", {}, t.title)));
     }
     if (items.length > SHOW) list.append(h("li", { class: "more" }, `+${items.length - SHOW} more`));

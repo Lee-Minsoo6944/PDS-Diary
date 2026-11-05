@@ -13,7 +13,7 @@
   <header class="desk-head">
     <h1 class="brand">Plan <i>·</i> Do <i>·</i> See <span>Diary</span></h1>
     <div class="planbar" id="planbar" hidden>
-      <label class="inline">Plan <select id="plan-select"></select></label>
+      <label class="inline">Plan <i id="plan-swatch" class="pdot big" aria-hidden="true"></i><select id="plan-select"></select></label>
       <button id="btn-new-plan" type="button" class="ghost light">+ New plan</button>
       <span class="today" id="today"></span>
       <span class="who"><span id="who-name"></span> <button id="btn-logout" type="button" class="ghost light small">Log out</button></span>
@@ -52,6 +52,7 @@
               <button type="button" class="icon" id="cal-next" aria-label="Next month">›</button>
             </div>
           </div>
+          <div id="plan-legend" class="plan-legend" hidden></div>
           <div class="cal-week">
             <span class="sun">Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span class="sat">Sat</span>
           </div>

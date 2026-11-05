@@ -1,7 +1,7 @@
 /* Plan · Do · See Diary — an open notebook that fits one screen */
 :root {
-  --desk: #15191d; --desk2: #232a31;
-  --cover: #1e2b36; --cover-edge: #131c24;
+  --desk: #2b333b; --desk2: #3d4852;
+  --cover: #2e4050; --cover-edge: #22313e;
   --paper: #fbf8f1; --paper-dark: #f2ede2;
   --ink: #23262b; --muted: #8a8478; --line: #e6dfd1; --line-strong: #cfc6b4;
   --rule: #dfe6ee; --margin: #ecc2b8;
@@ -35,7 +35,7 @@ body {
 }
 .planbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .planbar label.inline { flex-direction: row; align-items: center; gap: 8px; margin: 0; color: #8f9aa3; font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; }
-.planbar select { min-width: 300px; background: #1c242b; color: #e9e4da; border-color: #36424c; }
+.planbar select { min-width: 300px; background: #333d46; color: #eee9df; border-color: #55636f; }
 .planbar .today { color: #8f9aa3; font-size: .8rem; font-variant-numeric: tabular-nums; }
 
 /* ---------- Book ---------- */
@@ -242,7 +242,7 @@ table.daily tr.sum td { font-weight: 600; border-bottom: none; border-top: 1px s
 .auth-switch button.on { background: var(--accent); color: #fff; }
 .auth-card form button[type=submit] { width: 100%; margin-top: 4px; padding: 9px 0; }
 .auth-error { background: #fbe9e6; color: var(--red); border-radius: 6px; padding: 7px 10px; font-size: .84rem; margin: 0 0 8px; }
-.who { color: #c9d0d6; font-size: .8rem; display: inline-flex; align-items: center; gap: 6px; padding-left: 10px; border-left: 1px solid #36424c; }
+.who { color: #c9d0d6; font-size: .8rem; display: inline-flex; align-items: center; gap: 6px; padding-left: 10px; border-left: 1px solid #55636f; }
 .warn { background: #fbe9e6; color: #7d2a20; border-radius: 6px; padding: 8px 11px; font-size: .84rem; }
 button.danger-fill { background: var(--red); border-color: var(--red); }
 button.danger-fill:hover { background: #8f2c22; }

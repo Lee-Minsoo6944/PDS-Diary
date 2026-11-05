@@ -89,7 +89,7 @@ async function loadPlans() {
   S.plans = await api("GET", "/api/plans");
   const sel = clear($("#plan-select"));
   for (const p of S.plans) sel.append(h("option", { value: p.id }, `#${p.id} ${p.title}`));
-  if (!S.plans.find((p) => p.id === S.planId)) S.planId = S.plans.length ? S.plans[0].id : null;
+  if (!S.plans.find((p) => p.id === S.planId)) S.planId = S.plans.length ? S.plans[S.plans.length - 1].id : null;  // 목록은 오름차순, 처음엔 가장 최근 계획
   sel.value = S.planId ?? "";
 }
 

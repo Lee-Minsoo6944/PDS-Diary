@@ -604,7 +604,7 @@ def plan_detail(conn, uid, plan_id):
 def list_plans(conn, uid):
     rows = conn.execute("""
         SELECT p.*, (SELECT COUNT(*) FROM todos t WHERE t.plan_id = p.id AND t.deleted_at IS NULL) AS todo_count
-        FROM plans p WHERE p.user_id = ? ORDER BY p.start_date DESC, p.id DESC""", (uid,))
+        FROM plans p WHERE p.user_id = ? ORDER BY p.id""", (uid,))
     return [dict(r) for r in rows]
 
 

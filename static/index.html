@@ -46,6 +46,7 @@
           <ul class="checklist fill-sm" id="day-todos"></ul>
           <form id="day-add" class="day-add">
             <input name="title" placeholder="Add a to-do and press Enter" maxlength="200" required>
+            <select name="plan_id" id="day-plan" aria-label="Plan" title="Which plan this to-do goes into"></select>
             <select name="priority" aria-label="Priority"><option value="1">High</option><option value="2" selected>Normal</option><option value="3">Low</option></select>
             <input name="estimated_minutes" type="number" min="0" value="30" aria-label="Estimate (minutes)" title="Estimate (minutes)">
             <span class="muted small">min</span>

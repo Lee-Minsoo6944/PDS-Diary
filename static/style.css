@@ -168,6 +168,13 @@ ul.plain { padding-left: 18px; line-height: 1.8; }
 .day-add { display: flex; gap: 6px; align-items: center; margin: 8px 0 2px; white-space: nowrap; }
 .day-add input[name=title] { flex: 1; min-width: 0; }
 .day-add input[type=number] { width: 64px; }
+.day-add #day-plan { max-width: 150px; }
+
+/* plan colour dots (shown only when there are 2+ plans) */
+.pdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none; margin-right: 5px; vertical-align: 1px; }
+.mini .pdot { margin-right: 0; width: 6px; height: 6px; }
+.pc0 { background: #a5503f; } .pc1 { background: #2c5d63; } .pc2 { background: #b58a45; }
+.pc3 { background: #5b5b8f; } .pc4 { background: #5f7d4a; } .pc5 { background: #8a5a7a; }
 textarea.lined {
   width: 100%; resize: none; border: none; border-radius: 0; padding: 0 6px 0 40px;
   font-family: var(--serif); font-size: 1rem; line-height: 30px; color: #2a3446;

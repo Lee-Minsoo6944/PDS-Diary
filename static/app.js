@@ -15,8 +15,9 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 
 const S = {
   plans: [], planId: null, plan: null, tab: "calendar", ev: null, today: "", completeKeys: new Map(), editingPlan: false,
-  month: "", day: "", memo: { day: "", timer: null, dirty: false },
+  month: "", day: "", memo: { day: "", timer: null, dirty: false }, dayPlan: { day: "", id: null },
 };
+const PLAN_COLORS = 6; // matches .pc0 … .pc5 in style.css
 const WEEK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 // ---------------------------------------------------------------- helpers
@@ -84,6 +85,21 @@ async function loadPlans() {
   for (const p of S.plans) sel.append(h("option", { value: p.id }, `#${p.id} ${p.title} (${p.start_date}~${p.end_date})`));
   if (!S.plans.find((p) => p.id === S.planId)) S.planId = S.plans.length ? S.plans[0].id : null;
   sel.value = S.planId ?? "";
+}
+
+// Which plan a to-do on day d should go into: the current plan if its period covers d,
+// otherwise the first plan whose period covers d, otherwise the current plan.
+function planForDay(d) {
+  const covers = (p) => p.start_date <= d && d <= p.end_date;
+  const cur = S.plans.find((p) => p.id === S.planId);
+  if (cur && covers(cur)) return cur;
+  return S.plans.find(covers) || cur || S.plans[0] || null;
+}
+function planById(id) { return S.plans.find((p) => p.id === id) || null; }
+function planDot(id) {
+  if (S.plans.length < 2) return null;
+  const p = planById(id);
+  return h("i", { class: `pdot pc${id % PLAN_COLORS}`, title: p ? `Plan #${p.id} ${p.title}` : `Plan #${id}` });
 }
 
 async function render() {
@@ -198,7 +214,7 @@ function todoItem(t, { showDue = false, showPlan = false } = {}) {
   const done = t.status === "done";
   const meta = [
     `#${t.id}`,
-    showPlan ? `Plan #${t.plan_id}` : null,
+    showPlan ? (planById(t.plan_id)?.title || `Plan #${t.plan_id}`) : null,
     showDue ? `Due ${t.due_date || "—"}` : null,
     PRI[t.priority],
     `Est. ${t.estimated_minutes} min`,
@@ -211,7 +227,7 @@ function todoItem(t, { showDue = false, showPlan = false } = {}) {
       h("div", { class: "title" }, t.title,
         t.overdue ? h("span", { class: "badge red" }, "Overdue") : null,
         t.blocked ? h("span", { class: "badge amber" }, "Blocked") : null),
-      h("div", { class: "meta" }, meta, " ", t.tags.map((g) => h("span", { class: "tag" }, "#" + g))),
+      h("div", { class: "meta" }, showPlan ? planDot(t.plan_id) : null, meta, " ", t.tags.map((g) => h("span", { class: "tag" }, "#" + g))),
       t.note ? h("div", { class: "meta" }, t.note) : null),
     h("div", { class: "acts" },
       h("button", { type: "button", class: "link", onclick: () => showTodoFromAnywhere(t.id) }, "Details"),
@@ -409,6 +425,7 @@ async function renderCalendar() {
       list.append(h("li", { class: done ? "done" : t.overdue ? "overdue" : null, title: `#${t.id} ${t.title} (plan #${t.plan_id})` },
         h("input", { type: "checkbox", checked: done, "aria-label": `Complete ${t.title}`,
           onclick: (e) => { e.stopPropagation(); e.preventDefault(); done ? reopen(t.id) : complete(t.id); } }),
+        planDot(t.plan_id),
         h("span", {}, t.title)));
     }
     if (items.length > SHOW) list.append(h("li", { class: "more" }, `+${items.length - SHOW} more`));
@@ -423,9 +440,12 @@ async function renderCalendar() {
 }
 
 function openCellInput(cell, d) {
-  if (!S.planId) { toast("Create a plan first with “+ New plan”", true); return; }
+  const plan = planForDay(d);
+  if (!plan) { toast("Create a plan first with “+ New plan”", true); return; }
   if (cell.querySelector(".cell-input")) return cell.querySelector(".cell-input").focus();
-  const input = h("input", { class: "cell-input", maxlength: 200, placeholder: "To-do + Enter" });
+  const input = h("input", { class: "cell-input", maxlength: 200,
+    placeholder: S.plans.length > 1 ? `To-do → ${plan.title}` : "To-do + Enter",
+    title: `Goes into plan #${plan.id} ${plan.title}. To pick another plan, use the form on the right page.` });
   input.addEventListener("click", (e) => e.stopPropagation());
   input.addEventListener("keydown", async (e) => {
     if (e.key === "Escape") return input.remove();
@@ -435,8 +455,8 @@ function openCellInput(cell, d) {
     if (!title) return;
     input.disabled = true;
     try {
-      await api("POST", "/api/todos", { plan_id: S.planId, title, due_date: d, priority: 2, estimated_minutes: 30 });
-      toast(`Added a to-do on ${d} (30 min estimate — edit it on the right page)`);
+      await api("POST", "/api/todos", { plan_id: plan.id, title, due_date: d, priority: 2, estimated_minutes: 30 });
+      toast(`Added to “${plan.title}” on ${d} (30 min estimate — edit it on the right page)`);
       S.day = d;
       await renderCalendar();
       const again = document.querySelector(`.cell[data-date="${d}"]`);
@@ -466,7 +486,14 @@ async function renderDay() {
   const ul = clear($("#day-todos"));
   if (!data.items.length) ul.append(h("li", { class: "empty" }, "Nothing due this day. Add a to-do below."));
   for (const t of data.items) ul.append(todoItem(t, { showPlan: S.plans.length > 1 }));
-  $("#day-add").querySelector("button").disabled = !S.planId;
+  // Plan picker: default to the plan covering this day; keep the user's pick while they stay on the same day.
+  const sel = clear($("#day-plan"));
+  for (const p of S.plans) sel.append(h("option", { value: p.id }, `#${p.id} ${p.title}`));
+  const keep = S.dayPlan.day === d && planById(S.dayPlan.id);
+  const def = keep || planForDay(d);
+  sel.value = def ? def.id : "";
+  sel.hidden = S.plans.length < 2;
+  $("#day-add").querySelector("button").disabled = !S.plans.length;
   if (S.memo.day !== d) {
     const note = await api("GET", `/api/notes/${d}`);
     S.memo.day = d; S.memo.dirty = false;
@@ -504,15 +531,19 @@ function bind() {
     clearTimeout(S.memo.timer); S.memo.timer = setTimeout(saveMemo, 800);
   });
   $("#memo").addEventListener("blur", saveMemo);
+  $("#day-plan").addEventListener("change", (e) => { S.dayPlan = { day: S.day, id: Number(e.target.value) }; });
   window.addEventListener("beforeunload", (e) => { if (S.memo.dirty) { saveMemo(); e.preventDefault(); } });
   $("#day-add").addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (!S.planId) return toast("Create a plan first with “+ New plan”", true);
     const f = e.target, d = formData(f);
+    const plan = planById(Number(d.plan_id)) || planForDay(S.day);
+    if (!plan) return toast("Create a plan first with “+ New plan”", true);
     try {
-      await api("POST", "/api/todos", { plan_id: S.planId, title: d.title, priority: d.priority,
+      await api("POST", "/api/todos", { plan_id: plan.id, title: d.title, priority: d.priority,
         estimated_minutes: d.estimated_minutes || 0, due_date: S.day });
-      f.elements.title.value = ""; toast("To-do added");
+      S.dayPlan = { day: S.day, id: plan.id };
+      f.elements.title.value = "";
+      toast(S.plans.length > 1 ? `To-do added to “${plan.title}”` : "To-do added");
       await renderCalendar(); $("#day-add").elements.title.focus();
     } catch (err) { toast(err.message, true); }
   });

@@ -263,6 +263,29 @@ class PDS(unittest.TestCase):
         days = [r["date"] for r in ok("GET", f"/api/plans/{p['id']}/review")["daily"]["rows"]]
         self.assertEqual((days[0], days[-1]), (D(-3), TODAY))
 
+    def test_move_todo_to_another_plan(self):
+        other = ok("POST", "/api/plans", {"title": "다른 계획", "success_criteria": "x"})
+        t = self.todo(title="잘못 넣은 할 일", due_date=D(1))
+        ok("POST", f"/api/todos/{t['id']}/logs", {"started_at": "2026-11-03T21:00:00+09:00",
+                                                   "ended_at": "2026-11-03T21:30:00+09:00"})
+        body = {"title": t["title"], "due_date": D(1), "priority": 2, "plan_id": other["id"]}
+        moved = ok("PUT", f"/api/todos/{t['id']}", body)
+        self.assertEqual(moved["plan_id"], other["id"])
+        self.assertEqual(moved["actual_minutes"], 30)  # 실행 기록도 함께 옮겨짐
+        self.assertNotIn(t["id"], [x["id"] for x in ok("GET", f"/api/todos?plan_id={self.pid}")["items"]])
+        self.assertIn(t["id"], [x["id"] for x in ok("GET", f"/api/todos?plan_id={other['id']}")["items"]])
+        # plan_id 를 안 보내면 계획은 그대로
+        kept = ok("PUT", f"/api/todos/{t['id']}", {"title": "이름만", "due_date": D(1), "priority": 2})
+        self.assertEqual(kept["plan_id"], other["id"])
+        # 남의 계획으로는 못 옮김(404), 할 일도 그대로
+        mine = SESSION["cookie"]
+        _, SESSION["cookie"] = new_user("mv_")
+        theirs = ok("POST", "/api/plans", {"title": "남의 계획", "success_criteria": "x"})
+        SESSION["cookie"] = mine
+        s, d, _ = call("PUT", f"/api/todos/{t['id']}", {**body, "plan_id": theirs["id"]})
+        self.assertEqual((s, d["error"]), (404, "Plan not found"))
+        self.assertEqual(ok("GET", f"/api/todos/{t['id']}")["plan_id"], other["id"])
+
     def test_calendar_range_and_day_notes(self):
         a = self.todo(title="달력 안", due_date=D(1))
         self.todo(title="달력 밖", due_date=D(40))

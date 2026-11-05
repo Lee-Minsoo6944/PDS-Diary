@@ -257,19 +257,34 @@ button.danger-fill:hover { background: #8f2c22; }
   .book-wrap { flex: none; height: 600px; }
 }
 
-/* ---------- Narrow screens: one page at a time ---------- */
-@media (max-width: 900px) {
-  body { overflow: auto; height: auto; padding: 12px; }
-  .desk-head { flex-direction: column; align-items: flex-start; padding-right: 0; }
+/* ---------- Narrower windows: pages stack (calendar on top, day below) ---------- */
+@media (max-width: 1200px) {
+  body { overflow: auto; height: auto; }
+  .desk-head { padding-right: 0; flex-wrap: wrap; }
   .book-wrap { flex-direction: column-reverse; flex: none; }
   .ribbons { flex-direction: row; padding: 0; margin: 0; overflow-x: auto; }
   .ribbons button { width: auto; border-radius: 8px 8px 0 0; padding: 8px 12px; }
+  .ribbons button:hover { transform: none; }
   .ribbons button.on { transform: translateY(3px); }
-  .spread { grid-template-columns: 1fr; }
+  .spread { grid-template-columns: minmax(0, 1fr); }
   .spread::after { display: none; }
   .page { border-radius: 6px !important; margin-bottom: 8px; background-image: none !important; overflow: visible; }
-  .cal-grid { grid-auto-rows: minmax(72px, auto); flex: none !important; }
+  .page:last-child { margin-bottom: 0; }
+  .cal-grid { grid-auto-rows: minmax(96px, auto); flex: none !important; }
   .fill { flex: none !important; min-height: 220px; }
   .fill-sm { max-height: none; }
+}
+
+/* ---------- Phones ---------- */
+@media (max-width: 700px) {
+  body { padding: 12px; }
+  .desk-head { flex-direction: column; align-items: flex-start; }
+  .planbar { justify-content: flex-start; }
   .planbar select { min-width: 0; width: 100%; }
+  .book { padding: 8px; }
+  .page { padding: 18px 16px 14px; }
+  .cal-grid { grid-auto-rows: minmax(64px, auto); }
+  .cell .add { display: none; }            /* 좁은 칸에서 날짜와 겹침 → 날짜를 눌러 아래에서 추가 */
+  .day-add { flex-wrap: wrap; }
+  .day-add input[name="title"] { flex: 1 1 100%; }
 }

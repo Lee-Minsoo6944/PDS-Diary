@@ -171,10 +171,17 @@ ul.plain { padding-left: 18px; line-height: 1.8; }
 .day-add #day-plan { max-width: 150px; }
 
 /* plan colour dots (shown only when there are 2+ plans) */
-.pdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none; margin-right: 5px; vertical-align: 1px; }
-.mini .pdot { margin-right: 0; width: 6px; height: 6px; }
-.pc0 { background: #a5503f; } .pc1 { background: #2c5d63; } .pc2 { background: #b58a45; }
-.pc3 { background: #5b5b8f; } .pc4 { background: #5f7d4a; } .pc5 { background: #8a5a7a; }
+/* 계획별 색: .pcN 이 --pc 를 정하고, 점·막대·칸 배경이 그 색을 씀 */
+.pc0 { --pc: #c0533e; } .pc1 { --pc: #2f7f86; } .pc2 { --pc: #c4912e; } .pc3 { --pc: #5d5fa8; }
+.pc4 { --pc: #5d8a3c; } .pc5 { --pc: #a2507f; } .pc6 { --pc: #3f6fb0; } .pc7 { --pc: #8a6a4a; }
+.pdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; margin-right: 5px; vertical-align: 0; background: var(--pc, var(--muted)); }
+.pdot.big { width: 12px; height: 12px; margin: 0; }
+.mini li.ptint { background: color-mix(in srgb, var(--pc) 14%, transparent); border-left: 3px solid var(--pc); border-radius: 3px; padding-left: 2px; margin-bottom: 1px; }
+.checklist li.pbar { border-left: 4px solid var(--pc); padding-left: 8px; }
+.plan-legend { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 6px; }
+.plan-legend .chip { display: inline-flex; align-items: center; gap: 0; font-size: .74rem; padding: 2px 9px 2px 7px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--pc) 45%, transparent); background: color-mix(in srgb, var(--pc) 10%, transparent); color: var(--ink); cursor: pointer; }
+.plan-legend .chip.on { background: color-mix(in srgb, var(--pc) 24%, transparent); border-color: var(--pc); font-weight: 600; }
 textarea.lined {
   width: 100%; resize: none; border: none; border-radius: 0; padding: 0 6px 0 40px;
   font-family: var(--serif); font-size: 1rem; line-height: 30px; color: #2a3446;

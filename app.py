@@ -750,14 +750,101 @@ def respond(start_response, status, body_bytes, ctype, extra=()):
     return [body_bytes]
 
 
-STATUS_TEXT = {200: "200 OK", 201: "201 Created", 400: "400 Bad Request", 404: "404 Not Found",
+STATUS_TEXT = {200: "200 OK", 201: "201 Created", 400: "400 Bad Request", 403: "403 Forbidden", 404: "404 Not Found",
                405: "405 Method Not Allowed", 409: "409 Conflict", 413: "413 Payload Too Large",
                500: "500 Internal Server Error"}
+
+
+# ---------------------------------------------------------------- 자동 배포(GitHub 웹훅)
+# GitHub에 푸시하면 GitHub가 POST /api/deploy 로 알려 줍니다.
+# 서명(X-Hub-Signature-256)이 서버에만 있는 암호와 맞을 때만 git pull 후 웹 앱을 다시 시작합니다.
+# 암호 파일이 없으면 이 주소는 없는 것처럼(404) 동작합니다. 암호는 저장소에 넣지 않습니다.
+DEPLOY_SECRET_FILE = os.environ.get("PDS_DEPLOY_SECRET_FILE", os.path.expanduser("~/.pds_deploy_secret"))
+DEPLOY_BRANCH = "refs/heads/main"
+DEPLOY_MAX_BODY = 5 * 1024 * 1024
+
+
+def deploy_secret():
+    try:
+        with open(DEPLOY_SECRET_FILE, "rb") as f:
+            s = f.read().strip()
+        return s or None
+    except OSError:
+        return None
+
+
+def wsgi_file():
+    """PythonAnywhere는 WSGI 파일의 수정 시각이 바뀌면 웹 앱을 다시 시작합니다."""
+    p = os.environ.get("PDS_WSGI_FILE")
+    if p:
+        return p
+    import getpass
+    return f"/var/www/{getpass.getuser().lower()}_pythonanywhere_com_wsgi.py"
+
+
+def run_git_pull():
+    import subprocess
+    r = subprocess.run(["git", "pull", "--ff-only"], cwd=BASE_DIR, capture_output=True, text=True, timeout=90)
+    return r.returncode, (r.stdout + r.stderr).strip()[-1500:]
+
+
+def reload_later():
+    def touch():
+        p = wsgi_file()
+        if os.path.exists(p):
+            os.utime(p, None)
+    import threading
+    threading.Timer(1.0, touch).start()  # 응답을 먼저 보내고 다시 시작
+
+
+def handle_deploy(environ):
+    import hashlib
+    import hmac
+    secret = deploy_secret()
+    if environ.get("REQUEST_METHOD") != "POST" or not secret:
+        return 404, {"error": "Not found"}
+    try:
+        length = int(environ.get("CONTENT_LENGTH") or 0)
+    except ValueError:
+        length = 0
+    if length > DEPLOY_MAX_BODY:
+        return 413, {"error": "Request body is too large"}
+    raw = environ["wsgi.input"].read(length) if length else b""
+    expected = "sha256=" + hmac.new(secret, raw, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, environ.get("HTTP_X_HUB_SIGNATURE_256", "")):
+        return 403, {"error": "Bad signature"}
+    event = environ.get("HTTP_X_GITHUB_EVENT", "")
+    if event == "ping":
+        return 200, {"ok": True, "pong": True}
+    if event != "push":
+        return 200, {"ok": True, "skipped": f"event {event}"}
+    try:
+        ref = json.loads(raw.decode("utf-8")).get("ref")
+    except (ValueError, UnicodeDecodeError, AttributeError):
+        return 400, {"error": "Body is not valid JSON"}
+    if ref != DEPLOY_BRANCH:
+        return 200, {"ok": True, "skipped": f"ref {ref}"}
+    code, out = run_git_pull()
+    if code != 0:
+        return 500, {"ok": False, "git": out}
+    reload_later()
+    return 200, {"ok": True, "git": out, "reloading": True}
 
 
 def application(environ, start_response):
     method = environ.get("REQUEST_METHOD", "GET")
     path = environ.get("PATH_INFO", "/") or "/"
+
+    if path == "/api/deploy":
+        try:
+            status, payload = handle_deploy(environ)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            status, payload = 500, {"error": "Server error"}
+        return respond(start_response, STATUS_TEXT.get(status, f"{status} Error"),
+                       json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                       "application/json; charset=utf-8", [("Cache-Control", "no-store")])
 
     if not path.startswith("/api/"):
         if method != "GET" or path not in STATIC_FILES:

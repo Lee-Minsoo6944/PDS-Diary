@@ -1,7 +1,7 @@
 /* Plan · Do · See Diary — an open notebook that fits one screen */
 :root {
-  --desk: #15191d; --desk2: #232a31;
-  --cover: #1e2b36; --cover-edge: #131c24;
+  --desk: #3b444d; --desk2: #505c67;
+  --cover: #3b5163; --cover-edge: #2d4050;
   --paper: #fbf8f1; --paper-dark: #f2ede2;
   --ink: #23262b; --muted: #8a8478; --line: #e6dfd1; --line-strong: #cfc6b4;
   --rule: #dfe6ee; --margin: #ecc2b8;
@@ -31,12 +31,12 @@ body {
 .brand i { color: var(--gold); font-style: normal; padding: 0 .1em; }
 .brand span {
   font-family: var(--sans); font-size: .68rem; letter-spacing: .28em; text-transform: uppercase;
-  color: #8f9aa3; margin-left: 10px; vertical-align: 4px;
+  color: #b4bdc5; margin-left: 10px; vertical-align: 4px;
 }
 .planbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-.planbar label.inline { flex-direction: row; align-items: center; gap: 8px; margin: 0; color: #8f9aa3; font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; }
-.planbar select { min-width: 300px; background: #1c242b; color: #e9e4da; border-color: #36424c; }
-.planbar .today { color: #8f9aa3; font-size: .8rem; font-variant-numeric: tabular-nums; }
+.planbar label.inline { flex-direction: row; align-items: center; gap: 8px; margin: 0; color: #b4bdc5; font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; }
+.planbar select { min-width: 300px; background: #434e58; color: #f2eee6; border-color: #6a7884; }
+.planbar .today { color: #b4bdc5; font-size: .8rem; font-variant-numeric: tabular-nums; }
 
 /* ---------- Book ---------- */
 .book-wrap { flex: 1; min-height: 0; display: flex; width: 100%; max-width: 1500px; margin: 0 auto; }
@@ -107,8 +107,8 @@ button, .button {
 button:hover, .button:hover { background: #224a4f; }
 button.ghost { background: transparent; color: var(--accent); }
 button.ghost:hover { background: var(--accent-soft); }
-button.ghost.light { color: #e9e4da; border-color: #4a5862; }
-button.ghost.light:hover { background: #26313a; }
+button.ghost.light { color: #f2eee6; border-color: #8593a0; }
+button.ghost.light:hover { background: #4a5662; }
 button.small { padding: 3px 10px; font-size: .78rem; }
 button:disabled { opacity: .5; cursor: default; }
 button.icon { background: none; border: none; color: var(--ink); font-size: 1.4rem; line-height: 1; padding: 0 8px; }
@@ -242,7 +242,7 @@ table.daily tr.sum td { font-weight: 600; border-bottom: none; border-top: 1px s
 .auth-switch button.on { background: var(--accent); color: #fff; }
 .auth-card form button[type=submit] { width: 100%; margin-top: 4px; padding: 9px 0; }
 .auth-error { background: #fbe9e6; color: var(--red); border-radius: 6px; padding: 7px 10px; font-size: .84rem; margin: 0 0 8px; }
-.who { color: #c9d0d6; font-size: .8rem; display: inline-flex; align-items: center; gap: 6px; padding-left: 10px; border-left: 1px solid #36424c; }
+.who { color: #c9d0d6; font-size: .8rem; display: inline-flex; align-items: center; gap: 6px; padding-left: 10px; border-left: 1px solid #6a7884; }
 .warn { background: #fbe9e6; color: #7d2a20; border-radius: 6px; padding: 8px 11px; font-size: .84rem; }
 button.danger-fill { background: var(--red); border-color: var(--red); }
 button.danger-fill:hover { background: #8f2c22; }

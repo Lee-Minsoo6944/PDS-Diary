@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>이민수 소개 | Portfolio</title>
+    <meta name="description" content="이민수 자기소개 — 공개 소개와 패스키로만 열리는 비공개 영역">
+    <link rel="stylesheet" href="/me/about.css">
+    <link rel="stylesheet" href="/me/private.css">
+
+</head>
+<body>
+    <div class="container">
+        <p class="zone-badge zone-public">🌐 공개 영역 — 누구나 볼 수 있는 소개입니다. <a href="#private">🔒 비공개 영역으로 ↓</a></p>
+
+        <!-- 헤더 -->
+        <header>
+            <h1>안녕하세요👋, 이민수입니다.</h1>
+            <p class="purpose">
+                <strong>저를 궁금해하거나 관심 있는 분들</strong>께 <strong>제가 어떤 사람인지</strong> 소개하기 위해 만든 페이지입니다.
+            </p>
+            <div class="profile-box">
+                <span class="profile-item">👤 이름: <strong>이민수</strong></span>
+                <span class="profile-item">🎂 생년월일: <strong>1995.10.13</strong></span>
+                <span class="profile-item">✉️ 이메일: <strong>alstn6944@naver.com</strong></span>
+            </div>
+        </header>
+
+        <!-- 탭 + 타임라인 -->
+        <div class="main-layout">
+            <div class="tabs">
+                <h2 class="tabs-heading">나의 강점과 관심사</h2>
+
+                <!-- 타임라인: 탭 버튼 위로 이동 -->
+                <aside class="timeline" aria-label="한눈에 보는 요약 타임라인">
+                    <h2>📌 한눈에 보기</h2>
+                    <ol class="timeline-list">
+                        <li class="timeline-item active" data-target="tab-1">
+                            <div class="timeline-title">강점 1. 소통을 통한 갈등 해결</div>
+                            <div class="timeline-desc">기관별 회의를 직접 기획해 역할을 재정립, 안전사고 0건으로 훈련 성공 → 남구청장 표창</div>
+                        </li>
+                        <li class="timeline-item" data-target="tab-2">
+                            <div class="timeline-title">강점 2. 꼼꼼한 분석을 통한 문제 해결력</div>
+                            <div class="timeline-desc">5년치 사격 데이터 분석·표준화로 명중률 20% → 70%, 동형 함정 1위</div>
+                        </li>
+                        <li class="timeline-item" data-target="tab-3">
+                            <div class="timeline-title">관심사. 운동과 반려견과 함께하는 스트레스 극복</div>
+                            <div class="timeline-desc">축구·풋살·테니스와 반려견으로 스트레스 해소, 일상 활력 충전</div>
+                        </li>
+                    </ol>
+                </aside>
+
+                <div class="tab-list" role="tablist" aria-label="강점과 관심사 탭">
+                    <button class="tab-button" id="tab-1" role="tab"
+                            aria-selected="true" aria-controls="panel-1" tabindex="0">
+                        1. 🤝 소통을 통한 갈등 해결
+                    </button>
+                    <button class="tab-button" id="tab-2" role="tab"
+                            aria-selected="false" aria-controls="panel-2" tabindex="-1">
+                        2. 🔍 꼼꼼한 분석 문제 해결력
+                    </button>
+                    <button class="tab-button" id="tab-3" role="tab"
+                            aria-selected="false" aria-controls="panel-3" tabindex="-1">
+                        3. 🏃‍♂️ 운동과 반려견
+                    </button>
+                </div>
+
+                <!-- 패널 1 -->
+                <div class="tab-panel" id="panel-1" role="tabpanel" aria-labelledby="tab-1">
+                    <h3>1. 🤝 소통을 통한 갈등 해결 (강점)</h3>
+                    <p><span class="label">[상황]</span> 군 복무 시절, 민·관·군 테러 대응 통합훈련의 군 책임자로 참여했습니다. 하지만 초기 준비 과정에서 기관별 안전 문제와 책임 소재가 불분명해 훈련 준비가 진전되지 않는 갈등 상황이 발생했습니다.</p>
+                    <p><span class="label">[행동]</span> 원활한 소통을 위해 기관별 담당자들이 모이는 회의를 직접 기획했습니다. 회의에서 각 기관의 애로사항을 경청하고 종합하여, 기관별 역할과 임무를 명확히 재정립했습니다.</p>
+                    <p><span class="label">[결과]</span> 소통🗣️을 통해 갈등을 해결하여 <span class="highlight">단 한 건의 안전사고 없이 훈련을 성공적으로 마쳤습니다.</span> 이러한 공로를 인정받아 <strong>부산 남구청장 표창</strong>을 수상했습니다.</p>
+                    <p class="card-evidence">
+                        <span class="label evidence-label">[근거]</span>
+                        훈련 실제 개최 사실 확인:
+                        <a href="https://www.iminju.net/news/articleView.html?idxno=126101" target="_blank" rel="noopener">📰 민주신문 (2025.04.23)</a> ·
+                        <a href="https://www.busan.com/view/busan/view.php?code=2025070314581271765" target="_blank" rel="noopener">📰 부산일보 (2025.07.02)</a>
+                    </p>
+                </div>
+
+                <!-- 패널 2 -->
+                <div class="tab-panel" id="panel-2" role="tabpanel" aria-labelledby="tab-2" hidden>
+                    <h3>2. 🔍 꼼꼼한 분석을 통한 문제 해결력 (강점)</h3>
+                    <p><span class="label">[상황]</span> 함포 사격훈련 책임장교🎯로 부임했을 당시, 해당 함정의 사격 명중률이 20%에 불과해 동형 함정 중 하위권에 머물러 있었습니다.</p>
+                    <p><span class="label">[행동]</span> 5년 치 사격 데이터📊를 직접 분석하여 사격 거리와 장비 작동 시간의 오차를 확인해 표준화했습니다. 또한, 사격 관측용 레이더 하나에만 의존하던 방식을 개선하여 항해 레이더를 추가로 활용해 탄착점을 교차 확인하고, 명중 위치를 정밀하게 조정했습니다.</p>
+                    <p><span class="label">[결과]</span> 그 결과 명중률을 <span class="highlight">20%에서 70%까지 끌어올렸으며, 동형 함정 중 1위🏆</span>를 달성하는 성과를 거두었습니다.</p>
+                    <p class="card-evidence">
+                        <span class="label evidence-label">[근거]</span>
+                        합참의장 표창을 수여(표창장 확인 가능)
+                    </p>
+                </div>
+
+                <!-- 패널 3 -->
+                <div class="tab-panel" id="panel-3" role="tabpanel" aria-labelledby="tab-3" hidden>
+                    <h3>3. 🏃‍♂️ 운동과 반려견과 함께하는 스트레스 극복 (관심사)</h3>
+                    <p><span class="label">[상황]</span> 삶을 살아가거나 일을 하고 사람을 만나다 보면 스트레스나 상처를 받는 일이 많습니다. 저는 스트레스나 상처를 받는 것은 당연하다고 생각하며, 이것을 어떻게 극복할 것인지가 중요하다고 생각합니다.</p>
+                    <p><span class="label">[행동]</span> 어릴 때부터 ⚽ <strong>축구</strong>를 해서 땀을 흘리며 스트레스가 풀린다는 것을 느꼈고 지금도 축구와 풋살을 즐기고 있습니다. 새로운 운동도 배우고 싶어 🎾 <strong>테니스</strong>도 배워 현재까지 치고 있습니다. 그리고 🐶 <strong>강아지</strong>를 너무 좋아해 반려견과 함께하며 행복한 시간을 보내고 있습니다.</p>
+                    <p><span class="label">[결과]</span> 내가 좋아하는 운동을 하고 사랑하는 강아지와 함께하며 스트레스를 해소하고, <span class="highlight">일상의 활력을 충전⚡하여 더 나은 내일을 준비할 수 있게 되었습니다.</span></p>
+                    <p class="card-evidence">
+                        <span class="label evidence-label">[근거]</span>
+                        📸 인스타그램: <strong>@2_minsoo_</strong>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 근거 링크 모음 -->
+        <div class="evidence-box">
+            <h2>🔗 공개 가능한 근거 및 링크</h2>
+            <p>본인이 군 책임자로 참여했던 <strong>2025년 부산 남구 민·관·군 통합훈련(충무훈련)</strong>의 실제 개최 사실을 확인할 수 있는 공개 보도 자료입니다.</p>
+            <ul class="evidence-links">
+                <li><a href="https://www.iminju.net/news/articleView.html?idxno=126101" target="_blank" rel="noopener">📰 민주신문 기사 보기 (2025.04.23)</a></li>
+                <li><a href="https://www.busan.com/view/busan/view.php?code=2025070314581271765" target="_blank" rel="noopener">📰 부산일보 기사 보기 (2025.07.02)</a></li>
+            </ul>
+            <div class="footer-link">
+                나의 인스타그램 ID : 2_minsoo_(인스타그램 내 검색)
+            </div>
+        </div>
+
+        <!-- 공개 범위 안내 -->
+        <div class="scope-box">
+            <h2>📢 공개 범위 안내</h2>
+            <div class="scope-grid">
+                <div>
+                    <h3>✅ 공개하는 정보</h3>
+                    <ul>
+                        <li>이름 (이민수)</li>
+                        <li>나이 (1995.10.13 생)</li>
+                        <li>이메일 (alstn6944@naver.com)</li>
+                        <li>인스타그램 (@2_minsoo)</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3>🔒 공개하지 않는 정보</h3>
+                    <ul>
+                        <li>전화번호</li>
+                        <li>주민등록번호</li>
+                        <li>나만의 비밀</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== 여기부터 비공개 영역 (과제 8) =====================
+             이 파일에는 비공개 내용이 한 줄도 없습니다. 패스키로 들어온 사람에게만
+             /api/me/items 가 내용을 보내고, private.js 가 그것을 이 자리에 그립니다. -->
+        <div class="zone-divider" role="separator">
+            <span>🌐 여기까지 공개 영역</span>
+            <span class="zone-divider-lock">🔒 여기부터 비공개 영역 · 패스키 필요</span>
+        </div>
+
+        <section id="private" class="private-zone" aria-labelledby="private-title">
+            <h2 id="private-title">🔒 비공개 영역</h2>
+            <p class="pz-note">
+                이 칸의 내용은 페이지 파일에 들어 있지 않습니다. <strong>패스키로 들어온 사람</strong>에게만 서버가 따로 보내 줍니다.
+                비밀번호는 쓰지 않습니다. 안의 자료는 모두 <strong>지어낸 가상의 내용</strong>입니다.
+            </p>
+            <p id="pz-status" class="pz-status" role="status" aria-live="polite"></p>
+
+            <!-- 들어가기 전 -->
+            <div id="pz-out">
+                <div class="pz-grid">
+                    <form id="login-form" class="pz-card">
+                        <h3>🔑 패스키로 들어가기</h3>
+                        <label for="login-username">아이디 <span class="pz-optional">(선택)</span></label>
+                        <input id="login-username" name="username" autocomplete="username" maxlength="30"
+                               placeholder="비워 두면 기기에 저장된 패스키에서 고릅니다">
+                        <button type="submit" class="pz-btn pz-primary">패스키로 들어가기</button>
+                    </form>
+                    <form id="signup-form" class="pz-card">
+                        <h3>➕ 처음이면: 패스키로 계정 만들기</h3>
+                        <label for="signup-username">아이디 <span class="pz-optional">(영문·숫자 3–30자)</span></label>
+                        <input id="signup-username" name="username" required maxlength="30" autocomplete="username"
+                               pattern="[A-Za-z0-9_.\-]{3,30}">
+                        <label for="signup-pkname">이 패스키의 이름</label>
+                        <input id="signup-pkname" required maxlength="40" placeholder="예: 내 노트북 Windows Hello">
+                        <button type="submit" class="pz-btn">패스키 만들고 가입</button>
+                        <p class="pz-hint">브라우저가 지문·얼굴·PIN 확인을 요청합니다. 개인키는 기기 안에만 남고, 서버에는 공개키만 저장됩니다.</p>
+                    </form>
+                </div>
+            </div>
+
+            <!-- 들어온 뒤 -->
+            <div id="pz-in" hidden>
+                <div class="pz-bar">
+                    <span>🔓 <strong id="pz-who"></strong> 님의 비공개 영역</span>
+                    <button type="button" id="logout-btn" class="pz-btn">로그아웃</button>
+                </div>
+
+                <h3 class="pz-heading">📂 나만 보는 자료 <span id="item-count" class="pz-count"></span></h3>
+                <ul id="item-list" class="item-list"></ul>
+                <form id="item-form" class="pz-card pz-inline">
+                    <select id="item-category" aria-label="분류">
+                        <option value="project">준비 중인 프로젝트</option>
+                        <option value="apply">지원하려는 곳</option>
+                        <option value="retro">개인 회고</option>
+                        <option value="memo">메모</option>
+                    </select>
+                    <input id="item-title" required maxlength="80" placeholder="제목" aria-label="제목">
+                    <textarea id="item-body" maxlength="2000" rows="2" placeholder="내용 (가상의 내용만 적어 주세요)" aria-label="내용"></textarea>
+                    <button type="submit" class="pz-btn">자료 추가</button>
+                </form>
+
+                <h3 class="pz-heading">🔑 내 패스키 <span id="pk-count" class="pz-count"></span></h3>
+                <p id="pk-warning" class="pz-warn" hidden></p>
+                <div class="pk-table-wrap">
+                    <table class="pk-table">
+                        <thead>
+                            <tr><th>이름</th><th>등록한 날</th><th>마지막 사용</th><th>저장된 곳 (추정)</th><th>서버에 저장된 공개키</th><th></th></tr>
+                        </thead>
+                        <tbody id="pk-list"></tbody>
+                    </table>
+                </div>
+                <form id="addpk-form" class="pz-card pz-inline">
+                    <input id="addpk-name" required maxlength="40" placeholder="새 패스키 이름 (예: 내 휴대폰)" aria-label="새 패스키 이름">
+                    <button type="submit" class="pz-btn">패스키 추가</button>
+                    <p class="pz-hint">휴대폰(QR 코드), 보안 키, 다른 비밀번호 관리자처럼 <strong>다른 곳</strong>에 하나 더 만들어 두면 하나를 잃어도 들어올 수 있습니다.
+                        여기서 지운 패스키는 기기에는 남아 있을 수 있지만, 그걸로는 더 이상 들어올 수 없습니다.</p>
+                </form>
+            </div>
+            <noscript><p class="pz-warn">비공개 영역은 자바스크립트와 패스키를 지원하는 브라우저에서만 열 수 있습니다.</p></noscript>
+        </section>
+    </div>
+
+    <script src="/me/about.js"></script>
+    <script src="/me/private.js"></script>
+</body>
+</html>

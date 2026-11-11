@@ -1,0 +1,144 @@
+/* 과제 8: 공개 영역 / 비공개 영역 경계와 비공개 영역 화면. 과제 1의 색(남색 바탕·노란 강조)을 그대로 씁니다. */
+.zone-badge {
+    font-size: 0.85em;
+    margin: -8px 0 16px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    text-align: center;
+}
+.zone-public { background: rgba(52, 211, 153, 0.10); border: 1px solid #34d399; color: #a7f3d0; }
+.zone-public a { color: #fbbf24; font-weight: 700; text-decoration: none; margin-left: 6px; }
+.zone-public a:hover { text-decoration: underline; }
+
+.zone-divider {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 36px 0 0;
+    padding: 10px 14px;
+    border-top: 3px dashed #fbbf24;
+    font-size: 0.88em;
+    font-weight: 700;
+    color: #a7f3d0;
+}
+.zone-divider-lock { color: #fbbf24; }
+
+.private-zone {
+    border: 2px solid #fbbf24;
+    border-radius: 10px;
+    padding: 24px;
+    background:
+        repeating-linear-gradient(135deg, rgba(251, 191, 36, 0.05) 0 12px, transparent 12px 24px),
+        #0f172a;
+}
+.private-zone h2 { color: #fbbf24; font-size: 1.3em; margin-bottom: 8px; }
+.pz-note { color: #cbd5e1; font-size: 0.92em; margin-bottom: 10px; }
+.pz-note strong { color: #fde68a; }
+.pz-status { min-height: 1.6em; font-size: 0.92em; font-weight: 700; color: #a7f3d0; margin: 6px 0 12px; }
+.pz-status.error { color: #fca5a5; }
+
+.pz-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.pz-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.pz-card h3 { color: #ffffff; font-size: 1.02em; margin-bottom: 4px; }
+.pz-card label { font-size: 0.88em; color: #cbd5e1; }
+.pz-optional { color: #94a3b8; font-weight: 400; }
+.pz-card input, .pz-card select, .pz-card textarea {
+    font: inherit;
+    font-size: 0.92em;
+    color: #e2e8f0;
+    background: #0f172a;
+    border: 1px solid #475569;
+    border-radius: 6px;
+    padding: 8px 10px;
+    width: 100%;
+}
+.pz-card textarea { resize: vertical; }
+.pz-card input:focus-visible, .pz-card select:focus-visible, .pz-card textarea:focus-visible,
+.pz-btn:focus-visible { outline: 3px solid #fbbf24; outline-offset: 2px; }
+.pz-hint { font-size: 0.8em; color: #94a3b8; }
+
+.pz-btn {
+    font: inherit;
+    font-size: 0.9em;
+    font-weight: 700;
+    color: #e2e8f0;
+    background: #334155;
+    border: 1px solid #64748b;
+    border-radius: 6px;
+    padding: 9px 14px;
+    cursor: pointer;
+}
+.pz-btn:hover { background: #475569; }
+.pz-btn:disabled { opacity: 0.5; cursor: wait; }
+.pz-primary { background: #fbbf24; color: #0f172a; border-color: #fbbf24; }
+.pz-primary:hover { background: #f59e0b; }
+.pz-danger { background: transparent; color: #fca5a5; border-color: #7f1d1d; padding: 5px 10px; font-size: 0.82em; }
+.pz-danger:hover { background: #7f1d1d; color: #fff; }
+
+.pz-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: rgba(251, 191, 36, 0.1);
+    border: 1px solid #fbbf24;
+    margin-bottom: 18px;
+}
+.pz-bar strong { color: #fbbf24; }
+.pz-heading { color: #ffffff; font-size: 1.05em; margin: 22px 0 10px; }
+.pz-count { color: #94a3b8; font-weight: 400; font-size: 0.85em; }
+
+.item-list { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.item-list li {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-left: 4px solid #fbbf24;
+    border-radius: 6px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.item-cat { font-size: 0.75em; color: #0f172a; background: #fbbf24; border-radius: 4px; padding: 1px 7px; align-self: flex-start; font-weight: 700; }
+.item-title { color: #ffffff; font-weight: 700; font-size: 0.95em; }
+.item-body { color: #cbd5e1; font-size: 0.86em; white-space: pre-wrap; flex: 1; }
+.item-foot { display: flex; justify-content: space-between; align-items: center; font-size: 0.75em; color: #94a3b8; }
+
+.pz-inline { flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
+.pz-inline select { width: auto; }
+.pz-inline input { flex: 1 1 180px; width: auto; }
+.pz-inline textarea { flex: 1 1 100%; }
+.pz-inline .pz-hint { flex-basis: 100%; }
+
+.pk-table-wrap { overflow-x: auto; margin-bottom: 12px; }
+.pk-table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+.pk-table th, .pk-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #334155; vertical-align: top; }
+.pk-table th { color: #fbbf24; font-weight: 700; white-space: nowrap; }
+.pk-table td { color: #e2e8f0; }
+.pk-key { white-space: pre-line; font-family: Consolas, 'Courier New', monospace; font-size: 0.9em; color: #a7f3d0; word-break: break-all; }
+.pz-warn {
+    color: #fde68a;
+    background: rgba(251, 191, 36, 0.12);
+    border: 1px solid #b45309;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.88em;
+    margin-bottom: 10px;
+}
+
+@media (max-width: 768px) {
+    .pz-grid { grid-template-columns: 1fr; }
+    .private-zone { padding: 16px; }
+}

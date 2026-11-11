@@ -4,6 +4,7 @@
 
 - 바로 쓰기: **https://alstn.pythonanywhere.com**
 - 소스: https://github.com/Lee-Minsoo6944/PDS-Diary
+- 과제 8 자기소개 + 패스키 비공개 영역: **https://alstn.pythonanywhere.com/me/** (설명서 [PASSKEY.md](PASSKEY.md))
 
 ![달력 화면](docs/images/calendar.png)
 ---

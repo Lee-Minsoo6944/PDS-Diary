@@ -1,9 +1,10 @@
-"""플랜두씨 다이어리 서버 (과제 7: 가입·로그인 추가).
+"""플랜두씨 다이어리 서버 (과제 7: 가입·로그인 추가, 과제 8: /me/ 자기소개 + 패스키 비공개 영역).
 
 표준 라이브러리만 씁니다(설치할 것 없음). SQLite 파일 하나에 모든 자료를 저장합니다.
 - 로컬 실행:  py app.py   →  http://127.0.0.1:8000
 - 배포(WSGI): 이 파일의 `application` 을 WSGI 진입점으로 씁니다.
 - 6번 자료를 내 계정으로 옮기기:  python3 app.py claim <아이디>
+- 자기소개 페이지와 패스키 인증은 intro.py · passkey.py · static/me/ (설명은 PASSKEY.md)
 
 인증 (직접 구현, 자세한 설명은 AUTH.md)
 - 비밀번호: hashlib.scrypt(N=2^14, r=8, p=1) + 계정마다 다른 16바이트 소금값. 원문은 어디에도 저장하지 않습니다.
@@ -32,6 +33,8 @@ from decimal import ROUND_HALF_UP, Decimal
 from http.cookies import CookieError, SimpleCookie
 from urllib.parse import parse_qs
 
+import intro
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("PDS_DB_PATH", os.path.join(BASE_DIR, "data", "pds.db"))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -49,6 +52,12 @@ STATIC_FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/static/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/static/style.css": ("style.css", "text/css; charset=utf-8"),
+    # 과제 8: 자기소개(과제 1 내용 그대로) + 비공개 영역. 이 파일들에는 비공개 내용이 없습니다.
+    "/me/": ("me/index.html", "text/html; charset=utf-8"),
+    "/me/about.css": ("me/about.css", "text/css; charset=utf-8"),
+    "/me/about.js": ("me/about.js", "text/javascript; charset=utf-8"),
+    "/me/private.css": ("me/private.css", "text/css; charset=utf-8"),
+    "/me/private.js": ("me/private.js", "text/javascript; charset=utf-8"),
 }
 
 SECURITY_HEADERS = [
@@ -260,6 +269,7 @@ def init_db():
             stamp = datetime.now(KST).strftime("%Y%m%d-%H%M%S")
             shutil.copy2(DB_PATH, f"{DB_PATH}.v{old}-backup-{stamp}")  # 고치기 전에 통째로 백업
         conn.executescript(SCHEMA)
+        conn.executescript(intro.SCHEMA)  # 과제 8 표(me_*). 모두 IF NOT EXISTS 라 기존 자료는 그대로
         migrate(conn)
         conn.executescript(POST_SCHEMA)
         conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)",
@@ -1071,6 +1081,9 @@ def route(method, path, qs, body, conn, ctx):
     n = len(parts)
     if parts == ["meta"] and method == "GET":
         return {"today_kst": today_kst(), "schema_version": SCHEMA_VERSION}
+    # --- 과제 8: 자기소개 페이지의 비공개 영역. 다이어리와 따로 패스키 계정·세션을 씁니다(intro.py)
+    if parts[:1] == ["me"]:
+        return intro.route(method, parts[1:], body, conn, ctx)
     # --- 로그인 없이 부를 수 있는 것: 가입·로그인·로그아웃·내가 누구인지
     if parts[:1] == ["auth"]:
         if parts == ["auth", "signup"] and method == "POST":
@@ -1256,6 +1269,9 @@ def application(environ, start_response):
                        "application/json; charset=utf-8", [("Cache-Control", "no-store")])
 
     if not path.startswith("/api/"):
+        if path == "/me" and method == "GET":
+            return respond(start_response, "301 Moved Permanently", b"", "text/plain; charset=utf-8",
+                           [("Location", "/me/")])
         if method != "GET" or path not in STATIC_FILES:
             return respond(start_response, "404 Not Found", b"Not found", "text/plain; charset=utf-8")
         name, ctype = STATIC_FILES[path]
@@ -1292,8 +1308,9 @@ def application(environ, start_response):
         conn = connect()
         ctx["user"] = session_user(conn, environ)
         payload = route(method, path, qs, body, conn, ctx)
-        if method == "POST" and not path.endswith(("/complete", "/reopen")) and not path.startswith("/api/auth/"):
+        if method == "POST" and not path.endswith(("/complete", "/reopen")) and not path.startswith(("/api/auth/", "/api/me/")):
             status = 201
+        status = ctx.get("status", status)
         if path == "/api/export":
             stamp = datetime.now(KST).strftime("%Y%m%d-%H%M")
             extra.append(("Content-Disposition", f'attachment; filename="pds-diary-export-{stamp}.json"'))
@@ -1334,6 +1351,7 @@ def claim_unowned(username):
         conn.close()
 
 
+intro.init(ApiError, tx, now_utc)
 init_db()
 
 if __name__ == "__main__":

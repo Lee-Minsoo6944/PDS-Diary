@@ -25,7 +25,7 @@ HOST = "localhost:8000"
 ORIGIN = "http://localhost:8000"
 
 
-def call(method, path, body=None, cookie=None, csrf=True, host=HOST):
+def call(method, path, body=None, cookie=None, csrf=True, host=HOST, headers=None):
     path, _, query = path.partition("?")
     raw = json.dumps(body).encode() if body is not None else b""
     env = {"REQUEST_METHOD": method, "PATH_INFO": path, "QUERY_STRING": query, "HTTP_HOST": host,
@@ -34,6 +34,8 @@ def call(method, path, body=None, cookie=None, csrf=True, host=HOST):
         env["HTTP_X_PDS"] = "1"
     if cookie:
         env["HTTP_COOKIE"] = f"me_session={cookie}"
+    for k, v in (headers or {}).items():
+        env["HTTP_" + k.upper().replace("-", "_")] = v
     out = {}
 
     def sr(status, hdrs):
@@ -376,6 +378,61 @@ class CrossAccount(unittest.TestCase):
         self.assertIsNone(cookie)
         s, d, cookie, _ = login(key_a, username=a_name)
         self.assertEqual(s, 200)
+
+
+GH = "https://lee-minsoo6944.github.io"
+GH_HDR = {"Origin": GH}
+
+
+class GitHubPagesOrigin(unittest.TestCase):
+    """과제 1 소개 페이지(GitHub Pages)에서 이 서버의 API 를 부르는 경우: CORS + 본문 토큰."""
+
+    def gh(self, method, path, body=None, token=None, origin=GH):
+        h = {"Origin": origin}
+        if token:
+            h["Authorization"] = f"Bearer {token}"
+        return call(method, path, body, host="alstn.pythonanywhere.com", headers=h)
+
+    def test_preflight_only_for_github_pages(self):
+        s, _, h = self.gh("OPTIONS", "/api/me/login/options")
+        self.assertEqual(s, 204)
+        self.assertEqual(h["Access-Control-Allow-Origin"], GH)
+        self.assertIn("X-PDS", h["Access-Control-Allow-Headers"])
+        s, _, h = self.gh("OPTIONS", "/api/me/login/options", origin="https://evil.example")
+        self.assertNotIn("Access-Control-Allow-Origin", h)
+        s, _, h = self.gh("GET", "/api/me/items", origin="https://evil.example")
+        self.assertNotIn("Access-Control-Allow-Origin", h)
+        s, _, h = call("OPTIONS", "/api/plans", headers=GH_HDR)  # 다이어리 API 는 열지 않음
+        self.assertNotIn("Access-Control-Allow-Origin", h)
+
+    def test_register_login_logout_with_token(self):
+        name = f"gh_{secrets.token_hex(3)}"
+        s, opts, h = self.gh("POST", "/api/me/register/options", {"username": name, "passkey_name": "k"})
+        self.assertEqual(opts["publicKey"]["rp"]["id"], "lee-minsoo6944.github.io")
+        self.assertEqual(h["Access-Control-Allow-Origin"], GH)
+        cred, key = sa.create(opts, GH)
+        s, d, h = self.gh("POST", "/api/me/register/verify", {"credential": cred})
+        self.assertEqual(s, 200, d)
+        self.assertNotIn("Set-Cookie", h)          # 다른 주소에는 쿠키를 주지 않음
+        token = d["token"]
+        self.assertEqual(self.gh("GET", "/api/me/items", token=token)[0], 200)
+        self.assertEqual(self.gh("GET", "/api/me/items")[0], 401)
+        self.assertEqual(self.gh("GET", "/api/me/items", token="x" * 43)[0], 401)
+        s, opts, _ = self.gh("POST", "/api/me/login/options", {})
+        s, d, _ = self.gh("POST", "/api/me/login/verify", {"credential": sa.get(opts, GH, key)})
+        self.assertEqual(s, 200)
+        t2 = d["token"]
+        self.assertEqual(self.gh("POST", "/api/me/logout", token=t2)[0], 200)
+        self.assertEqual(self.gh("GET", "/api/me/items", token=t2)[0], 401)   # 로그아웃 뒤 같은 토큰
+        self.assertEqual(self.gh("GET", "/api/me/items", token=token)[0], 200)  # 다른 세션은 그대로
+
+    def test_passkey_from_other_site_rejected(self):
+        name = f"gh_{secrets.token_hex(3)}"
+        s, opts, _ = self.gh("POST", "/api/me/register/options", {"username": name, "passkey_name": "k"})
+        cred, _ = sa.create(opts, ORIGIN)  # localhost 에서 만든 응답을 GitHub Pages 요청으로
+        s, d, _ = self.gh("POST", "/api/me/register/verify", {"credential": cred})
+        self.assertEqual(s, 400)
+        self.assertIn("origin", d["error"])
 
 
 if __name__ == "__main__":

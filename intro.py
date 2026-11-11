@@ -29,6 +29,10 @@ RP_NAME = "Lee Minsoo · About me"
 # 패스키를 쓸 수 있는 주소. 패스키는 https 에서만 되고, 개발 중에는 http://localhost 만 예외입니다.
 ORIGINS = [o.strip() for o in os.environ.get("ME_ORIGINS", "https://alstn.pythonanywhere.com").split(",")
            if o.strip()]
+# 과제 1 소개 페이지가 있는 GitHub Pages 주소. 이 주소의 화면이 다른 주소(이 서버)의 API 를 부르므로
+# 이 주소에만 CORS 를 열고, 쿠키 대신 응답 본문의 세션 토큰을 줍니다(화면이 Authorization 머리글로 다시 보냄).
+CORS_ORIGINS = [o.strip() for o in os.environ.get("ME_CORS_ORIGINS", "https://lee-minsoo6944.github.io").split(",")
+                if o.strip()]
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS me_accounts (
@@ -140,7 +144,11 @@ def utcnow():
 
 # ---------------------------------------------------------------- 이 요청이 어느 사이트(rpId·origin)인지
 def site(environ):
-    """(rpId, origin). 정해 둔 주소와 http://localhost:<포트> 만 받습니다. 127.0.0.1 은 패스키 규칙상 안 됩니다."""
+    """(rpId, origin). 정해 둔 주소와 http://localhost:<포트> 만 받습니다. 127.0.0.1 은 패스키 규칙상 안 됩니다.
+    GitHub Pages 화면에서 온 요청이면 rpId 는 그 주소(lee-minsoo6944.github.io)입니다."""
+    req_origin = environ.get("HTTP_ORIGIN", "")
+    if req_origin in CORS_ORIGINS:
+        return req_origin.split("://", 1)[1].split(":")[0], req_origin
     host = environ.get("HTTP_HOST", "")
     for o in ORIGINS:
         if o.split("://", 1)[-1] == host:
@@ -155,7 +163,21 @@ def token_hash(token):
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def cors_headers(environ):
+    """GitHub Pages 화면에서 온 요청에만 붙이는 CORS 응답 머리글. 다른 주소는 빈 목록(브라우저가 응답을 막음)."""
+    o = environ.get("HTTP_ORIGIN", "")
+    if o not in CORS_ORIGINS:
+        return []
+    return [("Access-Control-Allow-Origin", o), ("Vary", "Origin"),
+            ("Access-Control-Allow-Methods", "GET, POST, DELETE"),
+            ("Access-Control-Allow-Headers", "Content-Type, X-PDS, Authorization"),
+            ("Access-Control-Max-Age", "600")]
+
+
 def read_token(environ):
+    auth = environ.get("HTTP_AUTHORIZATION", "")
+    if auth.startswith("Bearer ") and 20 <= len(auth) <= 200:
+        return auth[7:].strip()
     raw = environ.get("HTTP_COOKIE", "")
     if not raw:
         return None
@@ -197,7 +219,10 @@ def start_session(conn, ctx, account_id):
     now = utcnow()
     conn.execute("INSERT INTO me_sessions (token_hash, account_id, created_at, expires_at) VALUES (?,?,?,?)",
                  (token_hash(token), account_id, iso(now), iso(now + timedelta(hours=ME_SESSION_HOURS))))
-    ctx["headers"].append(cookie(ctx["environ"], token, ME_SESSION_HOURS * 3600))
+    if ctx.get("cors"):
+        ctx["token"] = token  # 다른 주소의 화면: 본문으로 주고, 화면은 탭을 닫으면 지워지는 sessionStorage 에만 둠
+    else:
+        ctx["headers"].append(cookie(ctx["environ"], token, ME_SESSION_HOURS * 3600))
 
 
 # ---------------------------------------------------------------- 챌린지 (서버가 만들고, 보관하고, 한 번만 받음)
@@ -361,7 +386,10 @@ def register_verify(conn, body, ctx):
              reg["fmt"], now)).lastrowid
         r = conn.execute("SELECT * FROM me_credentials WHERE id = ?", (cid,)).fetchone()
         username = conn.execute("SELECT username FROM me_accounts WHERE id = ?", (account_id,)).fetchone()[0]
-    return {"ok": True, "account": {"username": username}, "passkey": public_passkey(r)}
+    out = {"ok": True, "account": {"username": username}, "passkey": public_passkey(r)}
+    if ctx.get("token"):
+        out["token"] = ctx["token"]
+    return out
 
 
 # ---------------------------------------------------------------- 로그인
@@ -412,7 +440,10 @@ def login_verify(conn, body, ctx):
         conn.execute("UPDATE me_credentials SET sign_count = ?, backed_up = ?, last_used_at = ? WHERE id = ?",
                      (res["sign_count"], int(res["backed_up"]), Ctx.now_utc(), c["id"]))
         start_session(conn, ctx, c["account_id"])
-    return {"ok": True, "account": {"username": c["username"]}, "passkey": c["name"]}
+    out = {"ok": True, "account": {"username": c["username"]}, "passkey": c["name"]}
+    if ctx.get("token"):
+        out["token"] = ctx["token"]
+    return out
 
 
 def logout(conn, ctx):
@@ -420,7 +451,8 @@ def logout(conn, ctx):
     if token:
         with Ctx.tx(conn):
             conn.execute("DELETE FROM me_sessions WHERE token_hash = ?", (token_hash(token),))
-    ctx["headers"].append(cookie(ctx["environ"], "", 0))
+    if not ctx.get("cors"):
+        ctx["headers"].append(cookie(ctx["environ"], "", 0))
     return {"ok": True}
 
 

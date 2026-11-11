@@ -1,8 +1,22 @@
 // 과제 8: 비공개 영역 — 패스키 등록·로그인·로그아웃과 비공개 자료 조회.
 // 서버 쪽 짝: intro.py (/api/me/*), 서명 검사: passkey.py
 // 비공개 내용은 이 파일에도 HTML 에도 없고, 로그인한 뒤 /api/me/items 응답으로만 받습니다.
+//
+// 같은 파일을 두 곳에서 씁니다.
+// - https://alstn.pythonanywhere.com/me/  : API 가 같은 주소 → HttpOnly 쿠키 세션
+// - https://lee-minsoo6944.github.io/About-me/ : <script data-api="https://alstn.pythonanywhere.com/api/me/">
+//   API 가 다른 주소 → 서버가 본문으로 준 세션 토큰을 sessionStorage(탭을 닫으면 지워짐)에 두고 Authorization 머리글로 보냄
 (function () {
     'use strict';
+
+    const script = document.currentScript;
+    const API = (script && script.dataset.api) || '/api/me/';
+    const CROSS = new URL(API, location.href).origin !== location.origin;
+    const TOKEN_KEY = 'me_session_token';
+    const store = {
+        get() { try { return sessionStorage.getItem(TOKEN_KEY); } catch (e) { return null; } },
+        set(v) { try { if (v) sessionStorage.setItem(TOKEN_KEY, v); else sessionStorage.removeItem(TOKEN_KEY); } catch (e) { /* 저장 불가 */ } }
+    };
 
     const $ = (id) => document.getElementById(id);
     const status = $('pz-status');
@@ -37,16 +51,19 @@
     }
 
     async function api(method, path, body) {
-        const opt = { method: method, headers: {}, credentials: 'same-origin' };
+        const opt = { method: method, headers: {}, credentials: CROSS ? 'omit' : 'same-origin' };
         if (method !== 'GET') opt.headers['X-PDS'] = '1'; // 서버의 CSRF 확인용 머리글
+        if (CROSS && store.get()) opt.headers['Authorization'] = 'Bearer ' + store.get();
         if (body !== undefined) {
             opt.headers['Content-Type'] = 'application/json';
             opt.body = JSON.stringify(body);
         }
-        const r = await fetch('/api/me/' + path, opt);
+        const r = await fetch(API + path, opt);
         let data = null;
         try { data = await r.json(); } catch (e) { /* 본문 없음 */ }
+        if (data && data.token) store.set(data.token); // 다른 주소에서 쓸 때만 서버가 토큰을 줌
         if (!r.ok) {
+            if (r.status === 401 && CROSS) store.set(null);
             const err = new Error((data && data.error) || ('HTTP ' + r.status));
             err.status = r.status;
             throw err;
@@ -152,6 +169,7 @@
     }
 
     function showLoggedOut() {
+        if (CROSS) store.set(null);
         $('pz-in').hidden = true;
         $('pz-out').hidden = false;
         $('item-list').replaceChildren();
@@ -311,8 +329,8 @@
     if (!window.PublicKeyCredential || !navigator.credentials) {
         say('이 브라우저는 패스키를 지원하지 않습니다. 최신 Chrome·Edge·Safari·Firefox에서 열어 주세요.', true);
         document.querySelectorAll('#pz-out button').forEach((b) => { b.disabled = true; });
-    } else if (location.hostname === '127.0.0.1') {
+    } else if (!CROSS && location.hostname === '127.0.0.1') {
         say('패스키는 127.0.0.1 주소에서 쓸 수 없습니다. http://localhost:' + location.port + '/me/ 로 열어 주세요.', true);
     }
-    showPrivate();
+    if (CROSS && !store.get()) showLoggedOut(); else showPrivate();
 })();

@@ -1279,9 +1279,13 @@ def application(environ, start_response):
             data = f.read()
         return respond(start_response, "200 OK", data, ctype, [("Cache-Control", "no-cache")])
 
+    # 과제 8: GitHub Pages 의 소개 페이지(lee-minsoo6944.github.io)에서 /api/me/* 를 부를 때만 CORS 허용
+    cors = intro.cors_headers(environ) if path.startswith("/api/me/") else []
+    if cors and method == "OPTIONS":
+        return respond(start_response, "204 No Content", b"", "text/plain; charset=utf-8", cors)
     qs = {k: v[0] for k, v in parse_qs(environ.get("QUERY_STRING", "")).items()}
-    status, payload, extra = 200, None, [("Cache-Control", "no-store")]
-    ctx = {"environ": environ, "user": None, "headers": extra}
+    status, payload, extra = 200, None, [("Cache-Control", "no-store")] + cors
+    ctx = {"environ": environ, "user": None, "headers": extra, "cors": bool(cors)}
     conn = None
     try:
         body = {}

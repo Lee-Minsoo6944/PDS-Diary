@@ -46,12 +46,13 @@ def short(v, keep=24):
     return v
 
 
-def req(method, path, body=None, cookie=None, csrf=True):
+def req(method, path, body=None, cookie=None, csrf=True, headers=None):
     h = {"Content-Type": "application/json"} if body is not None else {}
     if csrf and method != "GET":
         h["X-PDS"] = "1"
     if cookie:
         h["Cookie"] = f"me_session={cookie}"
+    h.update(headers or {})
     data = json.dumps(body).encode() if body is not None else None
     h["Host"] = HOST
     r = urllib.request.Request(CONNECT + path, data=data, method=method, headers=h)
@@ -64,6 +65,8 @@ def req(method, path, body=None, cookie=None, csrf=True):
         payload = json.loads(raw)
     except ValueError:
         payload = raw.decode("utf-8", "replace")
+    if isinstance(payload, dict) and payload.get("token"):
+        SECRETS.append(payload["token"])
     sc = rh.get("Set-Cookie")
     new = None
     if sc and sc.startswith("me_session="):
@@ -71,18 +74,25 @@ def req(method, path, body=None, cookie=None, csrf=True):
         if new:
             SECRETS.append(new)
     return {"method": method, "path": path, "body": body, "cookie": cookie, "csrf": csrf and method != "GET",
-            "status": status, "payload": payload, "set_cookie": sc, "new_cookie": new}
+            "status": status, "payload": payload, "set_cookie": sc, "new_cookie": new, "headers": headers or {},
+            "acao": rh.get("Access-Control-Allow-Origin")}
 
 
 def show(r, full_payload=False):
     lines = [f"{r['method']} {r['path']}", f"Cookie: me_session={r['cookie']}" if r["cookie"] else "Cookie: (none)"]
     if r["csrf"]:
         lines.append("X-PDS: 1")
+    for k, v in r.get("headers", {}).items():
+        lines.append(f"{k}: {v}")
     if r["body"] is not None:
         lines.append(json.dumps(short(r["body"]), ensure_ascii=False))
     lines.append(f"→ {r['status']}")
     if r["set_cookie"]:
         lines.append(f"Set-Cookie: {r['set_cookie']}")
+    if r.get("acao"):
+        lines.append(f"Access-Control-Allow-Origin: {r['acao']}")
+    elif r.get("headers", {}).get("Origin"):
+        lines.append("Access-Control-Allow-Origin: (없음 → 브라우저가 응답을 화면에 넘기지 않음)")
     p = r["payload"]
     if isinstance(p, dict) and "items" in p and not full_payload:
         p = {"items": [f"#{x['id']} {x['title']}" for x in p["items"]]}
@@ -372,13 +382,47 @@ def main():
     pair(f"A 의 아이디로 로그인 — A 의 패스키 / B 의 패스키", own, other,
          "아이디를 적고 로그인하면 서버가 챌린지에 그 계정을 묶어 두고, 다른 계정의 패스키로 만든 서명은 서명이 맞아도 거절합니다.")
 
+    # ------------------------------------------------------------ 6. GitHub Pages 화면에서 부르기
+    GH = "https://lee-minsoo6944.github.io"
+    OUT.append("\n## 6. 결과물 주소(GitHub Pages)에서 부르기\n")
+    OUT.append("결과물 https://lee-minsoo6944.github.io/About-me/ 의 화면은 이 서버와 주소가 달라서, 브라우저가 `Origin` 머리글을 붙여 보냅니다. "
+               "서버는 이 주소에만 CORS 를 열고, rpId 를 `lee-minsoo6944.github.io` 로 정하며, 쿠키 대신 **응답 본문의 세션 토큰**을 줍니다"
+               "(화면은 탭을 닫으면 지워지는 sessionStorage 에 두고 `Authorization: Bearer` 로 보냄). 토큰 값은 앞 5글자 뒤를 가렸습니다.\n")
+    pre_ok = req("OPTIONS", "/api/me/login/options", headers={"Origin": GH, "Access-Control-Request-Method": "POST"}, csrf=False)
+    pre_bad = req("OPTIONS", "/api/me/login/options", headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "POST"}, csrf=False)
+    pair("사전 요청(preflight) — 결과물 주소 / 다른 사이트", pre_ok, pre_bad,
+         "다른 사이트에는 허락 머리글이 없어서, 그 사이트의 자바스크립트는 이 API 의 응답을 읽을 수 없습니다.",
+         expect_ok=204, expect_bad=(401, 404))
+    gname = f"gh_{tag}"
+    go = req("POST", "/api/me/register/options", {"username": gname, "passkey_name": "GitHub Pages laptop"}, headers={"Origin": GH})
+    gcred, gkey = sa.create(go["payload"], GH)
+    gv = req("POST", "/api/me/register/verify", {"credential": gcred}, headers={"Origin": GH})
+    rp_ok = go["payload"]["publicKey"]["rp"]["id"] == "lee-minsoo6944.github.io"
+    section(check(gv["status"] == 200 and rp_ok and not gv["set_cookie"] and gv["payload"].get("token"), "gh register")
+            + " 결과물 주소에서 등록 — rpId 가 github.io, 쿠키 없이 토큰")
+    block(go)
+    block(gv)
+    gtoken = gv["payload"]["token"]
+    pair("토큰 있음 / 없음으로 비공개 자료 요청", req("GET", "/api/me/items", headers={"Origin": GH, "Authorization": f"Bearer {gtoken}"}),
+         req("GET", "/api/me/items", headers={"Origin": GH}))
+    req("POST", "/api/me/logout", headers={"Origin": GH, "Authorization": f"Bearer {gtoken}"})
+    pair("로그아웃 전 / 후 — 같은 토큰", gv, req("GET", "/api/me/items", headers={"Origin": GH, "Authorization": f"Bearer {gtoken}"}),
+         "왼쪽은 토큰을 받은 등록 응답, 오른쪽은 `POST /api/me/logout` 뒤에 같은 토큰을 다시 보낸 요청입니다. 서버에서 세션 줄을 지웠으므로 거절됩니다.")
+    lcred_other = sa.create(req("POST", "/api/me/register/options", {"username": f"gh2_{tag}", "passkey_name": "x"},
+                                headers={"Origin": GH})["payload"], BASE)[0]
+    wrong = req("POST", "/api/me/register/verify", {"credential": lcred_other}, headers={"Origin": GH})
+    section(check(wrong["status"] == 400, "gh wrong origin") + " 다른 주소에서 만든 등록 응답을 결과물 주소 요청으로 보내기",
+            "인증기가 서명한 `clientDataJSON.origin` 은 화면의 진짜 주소라, 요청 머리글만 바꿔서는 통과할 수 없습니다.")
+    block(wrong)
+
     section("거절을 만드는 소스 위치 (C41)",
             "- `intro.py` `route()` — `/api/me/` 아래에서 세션이 없으면 `401 Log in with a passkey…`\n"
             "- `intro.py` `get_item()` · `delete_item()` · `list_items()` — SQL `WHERE … AND account_id = ?` (세션의 계정만)\n"
             "- `intro.py` `delete_passkey()` — `WHERE id = ? AND account_id = ?`, 마지막 하나면 409\n"
             "- `intro.py` `login_verify()` — 챌린지에 묶인 계정과 패스키 주인이 다르면 403\n"
             "- `intro.py` `consume_challenge()` — 모르는·이미 쓴·만료된 챌린지 거절\n"
-            "- `passkey.py` `verify_assertion()` — origin·rpIdHash·UP/UV 플래그·서명·signCount 검사")
+            "- `passkey.py` `verify_assertion()` — origin·rpIdHash·UP/UV 플래그·서명·signCount 검사\n"
+            "- `intro.py` `cors_headers()` · `site()` — 결과물 주소(GitHub Pages)에만 CORS, 그 주소의 rpId·origin 으로 검사")
 
     # 정리
     OUT.append("\n---\n")

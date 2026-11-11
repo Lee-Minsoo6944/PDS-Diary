@@ -1,6 +1,6 @@
 # 패스키 인증 확인 기록 (과제 8)
 
-서버: `http://localhost:8017` · 시험 계정 `alice_80b441`, `bob_80b441` (이 기록을 만들 때마다 새로 만듦). 인증기는 `tools/soft_authenticator.py`(P-256 키 쌍을 만들고 개인키를 자기 안에만 두는 시험용 프로그램)가 맡았습니다. 세션 쿠키는 앞 5글자 뒤를 가렸고, 긴 base64 값은 앞부분과 길이만 적었습니다.
+서버: `http://localhost:8017` · 시험 계정 `alice_341ca9`, `bob_341ca9` (이 기록을 만들 때마다 새로 만듦). 인증기는 `tools/soft_authenticator.py`(P-256 키 쌍을 만들고 개인키를 자기 안에만 두는 시험용 프로그램)가 맡았습니다. 세션 쿠키는 앞 5글자 뒤를 가렸고, 긴 base64 값은 앞부분과 길이만 적었습니다.
 
 > 실제 기기(Windows Hello·휴대폰·보안 키)로 한 확인은 [PASSKEY.md](../PASSKEY.md) 의 화면 기록을 보세요. 이 파일은 같은 HTTP 요청을 매번 똑같이 다시 만들어 볼 수 있게 자동으로 남긴 것입니다.
 
@@ -28,13 +28,13 @@
 
 | 통과한 요청 | 거절된 요청 |
 |---|---|
-| <pre>GET /api/me/items<br>Cookie: me_session=D28MN…(masked)<br>→ 200<br>{"items": ["#37 준비 중인 프로젝트 메모 (가상)", "#38 지원하려는 곳 목록 (가상)", "#39 11월 개인 회고 (가상)"]}</pre> | <pre>GET /api/me/items<br>Cookie: (none)<br>→ 401<br>{"error": "Log in with a passkey to see the private area"}</pre> |
+| <pre>GET /api/me/items<br>Cookie: me_session=5T7eM…(masked)<br>→ 200<br>{"items": ["#13 준비 중인 프로젝트 메모 (가상)", "#14 지원하려는 곳 목록 (가상)", "#15 11월 개인 회고 (가상)"]}</pre> | <pre>GET /api/me/items<br>Cookie: (none)<br>→ 401<br>{"error": "Log in with a passkey to see the private area"}</pre> |
 
 ### ✅ 패스키 목록 요청 — 세션 있음 / 지어낸 쿠키 (C16)
 
 | 통과한 요청 | 거절된 요청 |
 |---|---|
-| <pre>GET /api/me/passkeys<br>Cookie: me_session=D28MN…(masked)<br>→ 200<br>{"passkeys": ["#13 Alice laptop (2026-11-11)"]}</pre> | <pre>GET /api/me/passkeys<br>Cookie: me_session=made-up-cookie-value<br>→ 401<br>{"error": "Log in with a passkey to see the private area"}</pre> |
+| <pre>GET /api/me/passkeys<br>Cookie: me_session=5T7eM…(masked)<br>→ 200<br>{"passkeys": ["#5 Alice laptop (2026-11-11)"]}</pre> | <pre>GET /api/me/passkeys<br>Cookie: me_session=made-up-cookie-value<br>→ 401<br>{"error": "Log in with a passkey to see the private area"}</pre> |
 
 ## 2. 패스키 등록 (C19–C26)
 
@@ -43,9 +43,9 @@
 
 같은 요청을 세 번 보냈을 때 서버가 준 `challenge`(32바이트 무작위 값, base64url):
 
-1. `Zp0p2sDfwmzsQqk0G2d_fU7rTxE-Bu04krNCCzrzQ90`
-2. `Q70aDeL56J3LDCCQN6njgWaLP1sBoCvFQhmvH9oxpyo`
-3. `EmqtnCeT8ZW2qnkMdm_fGzJdN41hVp9JeBmP6NXtAqU`
+1. `Uhpqnlhkak0ydsA_VIXncTbswce7SPeVfjJZRgchDuw`
+2. `Tt3yti6i28EWa-GA1NWQnwd3GqeOqEcKPkFPlNqIVBU`
+3. `M5TA_soWMoGUmPcH4XBNsXbtCiFecQDF1BbZs9NgJfo`
 
 
 ### ✅ 등록 1단계 — 서버가 챌린지를 만들어 보내고 보관 (C19)
@@ -54,21 +54,21 @@
 POST /api/me/register/options
 Cookie: (none)
 X-PDS: 1
-{"passkey_name": "Bob phone", "username": "bob_80b441"}
+{"passkey_name": "Bob phone", "username": "bob_341ca9"}
 → 200
-{"publicKey": {"challenge": "fFOccwXsrwiMSQmWV9juR8l4ZS32…(43자)", "rp": {"id": "localhost", "name": "Lee Minsoo · About me"}, "user": {"id": "5ZaXCZhAijGsgUeRO87jmg", "name": "bob_80b441", "displayName": "bob_80b441"}…
+{"publicKey": {"challenge": "bwAF3_bmbRdmfGFQtKf8qq0TWHxE…(43자)", "rp": {"id": "localhost", "name": "Lee Minsoo · About me"}, "user": {"id": "4FHJjjSbAS88IL4aypeDiA", "name": "bob_341ca9", "displayName": "bob_341ca9"}…
 ```
 서버 DB `me_challenges` 의 그 줄(검증이 끝난 뒤라 `used_at` 이 채워져 있음. 5분 뒤 만료):
 
 ```json
 [
  {
-  "challenge": "fFOccwXsrwiMSQmWV9juR8l4ZS32_Dlem6HyPNSxN4s",
+  "challenge": "bwAF3_bmbRdmfGFQtKf8qq0TWHxE2Ku4xrTP3HRke4Q",
   "purpose": "register",
-  "username": "bob_80b441",
-  "created_at": "2026-11-11T07:15:59Z",
-  "expires_at": "2026-11-11T07:20:59Z",
-  "used_at": "2026-11-11T07:15:59Z"
+  "username": "bob_341ca9",
+  "created_at": "2026-11-11T07:26:16Z",
+  "expires_at": "2026-11-11T07:31:16Z",
+  "used_at": "2026-11-11T07:26:16Z"
  }
 ]
 ```
@@ -81,10 +81,10 @@ X-PDS: 1
 POST /api/me/register/verify
 Cookie: (none)
 X-PDS: 1
-{"credential": {"id": "AiA3FcT6k1eQ07XsdOJECvuv…(43자)", "rawId": "AiA3FcT6k1eQ07XsdOJECvuv…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(183자)", "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10…(259자)", "transports": ["internal", "hybrid"]}}}
+{"credential": {"id": "zU9kMnWRhxwYxh1Kh8Hf3MqX…(43자)", "rawId": "zU9kMnWRhxwYxh1Kh8Hf3MqX…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(183자)", "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10…(259자)", "transports": ["internal", "hybrid"]}}}
 → 200
-Set-Cookie: me_session=rL8NZ…(masked); Path=/; HttpOnly; SameSite=Strict; Max-Age=43200
-{"ok": true, "account": {"username": "bob_80b441"}, "passkey": {"id": 14, "name": "Bob phone", "created_at": "2026-11-11T07:15:59Z", "last_used_at": null, "storage": "비밀번호 관리자(종류 알 수 없음) · 여러 기기에 동기화됨", "aaguid": "000…
+Set-Cookie: me_session=fNdMw…(masked); Path=/; HttpOnly; SameSite=Strict; Max-Age=43200
+{"ok": true, "account": {"username": "bob_341ca9"}, "passkey": {"id": 6, "name": "Bob phone", "created_at": "2026-11-11T07:26:16Z", "last_used_at": null, "storage": "비밀번호 관리자(종류 알 수 없음) · 여러 기기에 동기화됨", "aaguid": "0000…
 ```
 `attestationObject` 를 풀어 보면:
 
@@ -94,32 +94,32 @@ Set-Cookie: me_session=rL8NZ…(masked); Path=/; HttpOnly; SameSite=Strict; Max-
 | `attStmt` | `{}` | 비어 있음 |
 | `authData.rpIdHash` | `49960de5880e8c68…` | SHA-256("localhost") — 이 사이트용 키 |
 | `authData.flags` | `0x5d` | UP·UV·AT·BE·BS |
-| `authData.credentialId` | `AiA3FcT6k1eQ07XsdOJE…` | 자격 증명 ID |
-| `credentialPublicKey` | kty=2(EC2), alg=-7(ES256), crv=1(P-256), x=`2b84c74ce1793ef7…`, y=`97f33360ae6f3475…` | **공개키**(곡선 위의 점 x, y) |
-| `clientDataJSON` | `{"type": "webauthn.create", "challenge": "fFOccwXsrwiMSQmWV9juR8l4ZS32_Dlem6HyPNSxN4s", "o…` | 종류·챌린지·주소 |
+| `authData.credentialId` | `zU9kMnWRhxwYxh1Kh8Hf…` | 자격 증명 ID |
+| `credentialPublicKey` | kty=2(EC2), alg=-7(ES256), crv=1(P-256), x=`430ff5774dd80361…`, y=`ef04c416f9896829…` | **공개키**(곡선 위의 점 x, y) |
+| `clientDataJSON` | `{"type": "webauthn.create", "challenge": "bwAF3_bmbRdmfGFQtKf8qq0TWHxE2Ku4xrTP3HRke4Q", "o…` | 종류·챌린지·주소 |
 
-개인키(인증기 안의 비밀 숫자 d)를 16진수로 바꾼 값 `209775…` 이 요청 본문에 들어 있는지: **✅ 없음**. ES256 의 개인키는 숫자 하나(d)이고, 공개키(x, y)는 d×G 로 계산한 점이라 공개키에서 d 를 되돌려 구할 수 없습니다.
+개인키(인증기 안의 비밀 숫자 d)를 16진수로 바꾼 값 `634ede…` 이 요청 본문에 들어 있는지: **✅ 없음**. ES256 의 개인키는 숫자 하나(d)이고, 공개키(x, y)는 d×G 로 계산한 점이라 공개키에서 d 를 되돌려 구할 수 없습니다.
 
 
 ### ✅ 서버에 저장된 값 — 공개키이며 비밀번호가 아님 (C21, C22, C24)
 
 ```json
 {
- "id": 14,
- "username": "bob_80b441",
+ "id": 6,
+ "username": "bob_341ca9",
  "name": "Bob phone",
- "credential_id": "AiA3FcT6k1eQ07XsdOJE…",
- "public_key": "pQECAyYgASFYICuEx0zheT739L3BGKWTahs3I3FW…(103자)",
+ "credential_id": "zU9kMnWRhxwYxh1Kh8Hf…",
+ "public_key": "pQECAyYgASFYIEMP9XdN2ANhZiYF6hh13LDRPlMO…(103자)",
  "alg": -7,
  "sign_count": 0,
  "aaguid": "00000000-0000-0000-0000-000000000000",
  "backup_eligible": 1,
  "transports": "internal,hybrid",
  "fmt": "none",
- "created_at": "2026-11-11T07:15:59Z"
+ "created_at": "2026-11-11T07:26:16Z"
 }
 ```
-`public_key` 를 풀면 `ES256 P-256 x=2b84c74ce1793ef7… y=97f33360ae6f3475…` — 인증기가 만든 공개키와 같은 점: **✅ 같음**. 이 값은 남에게 보여도 되는 공개 정보라서 DB 가 새어도 이것으로 로그인할 수 없습니다(로그인하려면 이 공개키에 맞는 서명을 만들어야 하고, 그건 개인키가 있는 인증기만 할 수 있음). 비밀번호처럼 사람이 외우거나 입력하는 값도, 해시해 숨겨야 하는 값도 아닙니다. 이름 `name` 은 사람이 붙인 이름입니다.
+`public_key` 를 풀면 `ES256 P-256 x=430ff5774dd80361… y=ef04c416f9896829…` — 인증기가 만든 공개키와 같은 점: **✅ 같음**. 이 값은 남에게 보여도 되는 공개 정보라서 DB 가 새어도 이것으로 로그인할 수 없습니다(로그인하려면 이 공개키에 맞는 서명을 만들어야 하고, 그건 개인키가 있는 인증기만 할 수 있음). 비밀번호처럼 사람이 외우거나 입력하는 값도, 해시해 숨겨야 하는 값도 아닙니다. 이름 `name` 은 사람이 붙인 이름입니다.
 
 `me_accounts`·`me_credentials` 표의 열: `aaguid`, `account_id`, `alg`, `backed_up`, `backup_eligible`, `created_at`, `credential_id`, `fmt`, `id`, `last_used_at`, `name`, `public_key`, `sign_count`, `transports`, `user_handle`, `username` — 비밀번호 열이 없습니다.
 
@@ -132,19 +132,19 @@ Set-Cookie: me_session=rL8NZ…(masked); Path=/; HttpOnly; SameSite=Strict; Max-
 POST /api/me/register/options
 Cookie: (none)
 X-PDS: 1
-{"username": "cancel_80b441", "passkey_name": "x"}
+{"username": "cancel_341ca9", "passkey_name": "x"}
 → 200
-{"publicKey": {"challenge": "6WJDJ_qUif2-SrFCi7TalvOPkWbZ…(43자)", "rp": {"id": "localhost", "name": "Lee Minsoo · About me"}, "user": {"id": "234PCoI_44eCAPt15w-nnQ", "name": "cancel_80b441", "displayName": "cancel_80…
+{"publicKey": {"challenge": "O9r_YWMNe1liz5EXG3LAGFWO0Fvx…(43자)", "rp": {"id": "localhost", "name": "Lee Minsoo · About me"}, "user": {"id": "dzzpuo8t2MXJeD_hYXXv8Q", "name": "cancel_341ca9", "displayName": "cancel_34…
 ```
 ```
 POST /api/me/cancel
 Cookie: (none)
 X-PDS: 1
-{"challenge": "6WJDJ_qUif2-SrFCi7TalvOP…(43자)"}
+{"challenge": "O9r_YWMNe1liz5EXG3LAGFWO…(43자)"}
 → 200
 {"ok": true}
 ```
-취소 전 계정·패스키 수 `{'a': 10, 'c': 10}` → 취소 후 `{'a': 10, 'c': 10}`, 그 챌린지 줄 수: `0`
+취소 전 계정·패스키 수 `{'a': 5, 'c': 5}` → 취소 후 `{'a': 5, 'c': 5}`, 그 챌린지 줄 수: `0`
 
 
 ## 3. 패스키 로그인 (C27–C35)
@@ -152,9 +152,9 @@ X-PDS: 1
 
 ### ✅ 로그인 요청마다 챌린지가 다름 (C27, C28)
 
-1. `6ZcKwC8RhyBg1e1K1TDqBUqu9nSytN-0f2uLidZdaYk`
-2. `ewOTfgaBmUlGpfSve27aqQBKgKMr_acaazoh-njc6k0`
-3. `cKslFe9_oQam1fU3wRJrQl57LIAtAWxNfqe43jn0Dkw`
+1. `cQ_O8BrDgrMkoiXhzZ87hZGKk-1uqLmB4KYcNRlDKeM`
+2. `OePgSIydvh1duSI6KgjA-wPOuUdygdBCyoG6oPIr2nU`
+3. `i2N9rtB-LtomQVpgKB7Md4KU5uR7En3fQyC0wS0mDFs`
 
 
 ### ✅ 서명 확인 성공 / 실패 (C29, C30)
@@ -163,7 +163,7 @@ X-PDS: 1
 
 | 통과한 요청 | 거절된 요청 |
 |---|---|
-| <pre>POST /api/me/login/verify<br>Cookie: (none)<br>X-PDS: 1<br>{"credential": {"id": "ajbEM5tz9bKIDEMYpNeIL5HT…(43자)", "rawId": "ajbEM5tz9bKIDEMYpNeIL5HT…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(179자)", "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_k…(50자)", "signature": "MEQCIHH7nXdg02D-gVJQI_Oq…(94자)", "userHandle": "K_0NrbKWhxmVeqJBa1lx4A"}}}<br>→ 200<br>Set-Cookie: me_session=d0i6W…(masked); Path=/; HttpOnly; SameSite=Strict; Max-Age=43200<br>{"ok": true, "account": {"username": "alice_80b441"}, "passkey": "Alice laptop"}</pre> | <pre>POST /api/me/login/verify<br>Cookie: (none)<br>X-PDS: 1<br>{"credential": {"id": "ajbEM5tz9bKIDEMYpNeIL5HT…(43자)", "rawId": "ajbEM5tz9bKIDEMYpNeIL5HT…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(179자)", "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_k…(50자)", "signature": "MEQCIAovgArmwdiQ_i_IeEMX…(94자)", "userHandle": "K_0NrbKWhxmVeqJBa1lx4A"}}}<br>→ 401<br>{"error": "Signature check failed"}</pre> |
+| <pre>POST /api/me/login/verify<br>Cookie: (none)<br>X-PDS: 1<br>{"credential": {"id": "zluxVD0cLpIdTU_LDAPok24g…(43자)", "rawId": "zluxVD0cLpIdTU_LDAPok24g…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(179자)", "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_k…(50자)", "signature": "MEUCIFaE7d3vm5g16AAXQ5mm…(95자)", "userHandle": "2nlK4h0a64v56aMc4av0YA"}}}<br>→ 200<br>Set-Cookie: me_session=SCJuf…(masked); Path=/; HttpOnly; SameSite=Strict; Max-Age=43200<br>{"ok": true, "account": {"username": "alice_341ca9"}, "passkey": "Alice laptop"}</pre> | <pre>POST /api/me/login/verify<br>Cookie: (none)<br>X-PDS: 1<br>{"credential": {"id": "zluxVD0cLpIdTU_LDAPok24g…(43자)", "rawId": "zluxVD0cLpIdTU_LDAPok24g…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(179자)", "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_k…(50자)", "signature": "MEUCIETp-dWBRvE4xNkGwcTe…(95자)", "userHandle": "2nlK4h0a64v56aMc4av0YA"}}}<br>→ 401<br>{"error": "Signature check failed"}</pre> |
 
 ### ✅ 이미 쓴 챌린지 다시 보내기 (C31)
 
@@ -171,7 +171,7 @@ X-PDS: 1
 
 | 통과한 요청 | 거절된 요청 |
 |---|---|
-| <pre>POST /api/me/login/verify<br>Cookie: (none)<br>X-PDS: 1<br>{"credential": {"id": "ajbEM5tz9bKIDEMYpNeIL5HT…(43자)", "rawId": "ajbEM5tz9bKIDEMYpNeIL5HT…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(179자)", "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_k…(50자)", "signature": "MEQCIHH7nXdg02D-gVJQI_Oq…(94자)", "userHandle": "K_0NrbKWhxmVeqJBa1lx4A"}}}<br>→ 200<br>Set-Cookie: me_session=d0i6W…(masked); Path=/; HttpOnly; SameSite=Strict; Max-Age=43200<br>{"ok": true, "account": {"username": "alice_80b441"}, "passkey": "Alice laptop"}</pre> | <pre>POST /api/me/login/verify<br>Cookie: (none)<br>X-PDS: 1<br>{"credential": {"id": "ajbEM5tz9bKIDEMYpNeIL5HT…(43자)", "rawId": "ajbEM5tz9bKIDEMYpNeIL5HT…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(179자)", "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_k…(50자)", "signature": "MEQCIHH7nXdg02D-gVJQI_Oq…(94자)", "userHandle": "K_0NrbKWhxmVeqJBa1lx4A"}}}<br>→ 401<br>{"error": "This challenge was already used"}</pre> |
+| <pre>POST /api/me/login/verify<br>Cookie: (none)<br>X-PDS: 1<br>{"credential": {"id": "zluxVD0cLpIdTU_LDAPok24g…(43자)", "rawId": "zluxVD0cLpIdTU_LDAPok24g…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(179자)", "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_k…(50자)", "signature": "MEUCIFaE7d3vm5g16AAXQ5mm…(95자)", "userHandle": "2nlK4h0a64v56aMc4av0YA"}}}<br>→ 200<br>Set-Cookie: me_session=SCJuf…(masked); Path=/; HttpOnly; SameSite=Strict; Max-Age=43200<br>{"ok": true, "account": {"username": "alice_341ca9"}, "passkey": "Alice laptop"}</pre> | <pre>POST /api/me/login/verify<br>Cookie: (none)<br>X-PDS: 1<br>{"credential": {"id": "zluxVD0cLpIdTU_LDAPok24g…(43자)", "rawId": "zluxVD0cLpIdTU_LDAPok24g…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(179자)", "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_k…(50자)", "signature": "MEUCIFaE7d3vm5g16AAXQ5mm…(95자)", "userHandle": "2nlK4h0a64v56aMc4av0YA"}}}<br>→ 401<br>{"error": "This challenge was already used"}</pre> |
 
 ### ✅ 로그인 뒤 사용자 식별 방식 (C32, C34)
 
@@ -182,7 +182,7 @@ X-PDS: 1
 
 ```
 POST /api/me/logout
-Cookie: me_session=d0i6W…(masked)
+Cookie: me_session=SCJuf…(masked)
 X-PDS: 1
 → 200
 Set-Cookie: me_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0
@@ -195,7 +195,7 @@ Set-Cookie: me_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0
 
 | 통과한 요청 | 거절된 요청 |
 |---|---|
-| <pre>GET /api/me/items<br>Cookie: me_session=d0i6W…(masked)<br>→ 200<br>{"items": ["#37 준비 중인 프로젝트 메모 (가상)", "#38 지원하려는 곳 목록 (가상)", "#39 11월 개인 회고 (가상)"]}</pre> | <pre>GET /api/me/items<br>Cookie: me_session=d0i6W…(masked)<br>→ 401<br>{"error": "Log in with a passkey to see the private area"}</pre> |
+| <pre>GET /api/me/items<br>Cookie: me_session=SCJuf…(masked)<br>→ 200<br>{"items": ["#13 준비 중인 프로젝트 메모 (가상)", "#14 지원하려는 곳 목록 (가상)", "#15 11월 개인 회고 (가상)"]}</pre> | <pre>GET /api/me/items<br>Cookie: me_session=SCJuf…(masked)<br>→ 401<br>{"error": "Log in with a passkey to see the private area"}</pre> |
 
 ## 4. 패스키 두 개 · 하나 삭제 (C42–C46)
 
@@ -206,33 +206,33 @@ Set-Cookie: me_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0
 
 ```
 POST /api/me/register/options
-Cookie: me_session=WEazU…(masked)
+Cookie: me_session=c1hTi…(masked)
 X-PDS: 1
 {"passkey_name": "Alice phone"}
 → 200
-{"publicKey": {"challenge": "riXUn5x9ShcL6A2jNlu5n4OB3UC2…(43자)", "rp": {"id": "localhost", "name": "Lee Minsoo · About me"}, "user": {"id": "K_0NrbKWhxmVeqJBa1lx4A", "name": "alice_80b441", "displayName": "alice_80b4…
+{"publicKey": {"challenge": "5zVh8adHnwVQ8LoF13OQgwGR_0No…(43자)", "rp": {"id": "localhost", "name": "Lee Minsoo · About me"}, "user": {"id": "2nlK4h0a64v56aMc4av0YA", "name": "alice_341ca9", "displayName": "alice_341c…
 ```
 ```
 POST /api/me/register/verify
-Cookie: me_session=WEazU…(masked)
+Cookie: me_session=c1hTi…(masked)
 X-PDS: 1
-{"credential": {"id": "f2AePrGcCkPENbzlF5sbMnzS…(43자)", "rawId": "f2AePrGcCkPENbzlF5sbMnzS…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(183자)", "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10…(259자)", "transports": ["internal", "hybrid"]}}}
+{"credential": {"id": "p6D94bSm-1g183C2HSJ3bwyx…(43자)", "rawId": "p6D94bSm-1g183C2HSJ3bwyx…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(183자)", "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10…(259자)", "transports": ["internal", "hybrid"]}}}
 → 200
-{"ok": true, "account": {"username": "alice_80b441"}, "passkey": {"id": 15, "name": "Alice phone", "created_at": "2026-11-11T07:15:59Z", "last_used_at": null, "storage": "비밀번호 관리자(종류 알 수 없음) · 여러 기기에 동기화됨", "aaguid": …
+{"ok": true, "account": {"username": "alice_341ca9"}, "passkey": {"id": 7, "name": "Alice phone", "created_at": "2026-11-11T07:26:16Z", "last_used_at": null, "storage": "비밀번호 관리자(종류 알 수 없음) · 여러 기기에 동기화됨", "aaguid": "…
 ```
 
 ### ✅ 한 계정에 패스키 두 개 (C42, C43)
 
 | 이름 | 등록한 날(UTC) | 저장된 곳(추정) | 공개키 |
 |---|---|---|---|
-| Alice laptop | 2026-11-11T07:15:59Z | 비밀번호 관리자(종류 알 수 없음) · 여러 기기에 동기화됨 | ES256 x=6a212411c408… |
-| Alice phone | 2026-11-11T07:15:59Z | 비밀번호 관리자(종류 알 수 없음) · 여러 기기에 동기화됨 | ES256 x=fedb27b7602a… |
+| Alice laptop | 2026-11-11T07:26:16Z | 비밀번호 관리자(종류 알 수 없음) · 여러 기기에 동기화됨 | ES256 x=6f7ccdcf4a82… |
+| Alice phone | 2026-11-11T07:26:16Z | 비밀번호 관리자(종류 알 수 없음) · 여러 기기에 동기화됨 | ES256 x=7e78fe718dd4… |
 
 **첫 번째 패스키(Alice laptop) 삭제**
 
 ```
-DELETE /api/me/passkeys/13
-Cookie: me_session=WEazU…(masked)
+DELETE /api/me/passkeys/5
+Cookie: me_session=c1hTi…(masked)
 X-PDS: 1
 → 200
 {"ok": true, "left": 1}
@@ -244,7 +244,7 @@ X-PDS: 1
 
 | 통과한 요청 | 거절된 요청 |
 |---|---|
-| <pre>POST /api/me/login/verify<br>Cookie: (none)<br>X-PDS: 1<br>{"credential": {"id": "f2AePrGcCkPENbzlF5sbMnzS…(43자)", "rawId": "f2AePrGcCkPENbzlF5sbMnzS…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(179자)", "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_k…(50자)", "signature": "MEYCIQDmjBCrj6VrHphI7Ryr…(96자)", "userHandle": "K_0NrbKWhxmVeqJBa1lx4A"}}}<br>→ 200<br>Set-Cookie: me_session=e-B3Z…(masked); Path=/; HttpOnly; SameSite=Strict; Max-Age=43200<br>{"ok": true, "account": {"username": "alice_80b441"}, "passkey": "Alice phone"}</pre> | <pre>POST /api/me/login/verify<br>Cookie: (none)<br>X-PDS: 1<br>{"credential": {"id": "ajbEM5tz9bKIDEMYpNeIL5HT…(43자)", "rawId": "ajbEM5tz9bKIDEMYpNeIL5HT…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(179자)", "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_k…(50자)", "signature": "MEQCIDMyry_jHZoGy67UCOw_…(94자)", "userHandle": "K_0NrbKWhxmVeqJBa1lx4A"}}}<br>→ 401<br>{"error": "This passkey is not registered (it may have been deleted)"}</pre> |
+| <pre>POST /api/me/login/verify<br>Cookie: (none)<br>X-PDS: 1<br>{"credential": {"id": "p6D94bSm-1g183C2HSJ3bwyx…(43자)", "rawId": "p6D94bSm-1g183C2HSJ3bwyx…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(179자)", "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_k…(50자)", "signature": "MEYCIQCcABq1FK3WWGn8NWcI…(96자)", "userHandle": "2nlK4h0a64v56aMc4av0YA"}}}<br>→ 200<br>Set-Cookie: me_session=H1Zsv…(masked); Path=/; HttpOnly; SameSite=Strict; Max-Age=43200<br>{"ok": true, "account": {"username": "alice_341ca9"}, "passkey": "Alice phone"}</pre> | <pre>POST /api/me/login/verify<br>Cookie: (none)<br>X-PDS: 1<br>{"credential": {"id": "zluxVD0cLpIdTU_LDAPok24g…(43자)", "rawId": "zluxVD0cLpIdTU_LDAPok24g…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(179자)", "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_k…(50자)", "signature": "MEQCIGmmeiuMkVqb1sE3RDLo…(94자)", "userHandle": "2nlK4h0a64v56aMc4av0YA"}}}<br>→ 401<br>{"error": "This passkey is not registered (it may have been deleted)"}</pre> |
 
 ### ✅ 마지막 남은 패스키 삭제 시도 (C46)
 
@@ -252,7 +252,7 @@ X-PDS: 1
 
 | 통과한 요청 | 거절된 요청 |
 |---|---|
-| <pre>GET /api/me/passkeys<br>Cookie: me_session=e-B3Z…(masked)<br>→ 200<br>{"passkeys": ["#15 Alice phone (2026-11-11)"]}</pre> | <pre>DELETE /api/me/passkeys/15<br>Cookie: me_session=e-B3Z…(masked)<br>X-PDS: 1<br>→ 409<br>{"error": "This is your last passkey. Add another passkey first, or you could never log in again."}</pre> |
+| <pre>GET /api/me/passkeys<br>Cookie: me_session=H1Zsv…(masked)<br>→ 200<br>{"passkeys": ["#7 Alice phone (2026-11-11)"]}</pre> | <pre>DELETE /api/me/passkeys/7<br>Cookie: me_session=H1Zsv…(masked)<br>X-PDS: 1<br>→ 409<br>{"error": "This is your last passkey. Add another passkey first, or you could never log in again."}</pre> |
 
 ## 5. 다른 계정의 자료·패스키 (C36–C41)
 
@@ -260,49 +260,49 @@ X-PDS: 1
 ### ✅ 계정 두 개, 서로 다른 비공개 내용 (C36)
 
 
-**alice_80b441**
+**alice_341ca9**
 
 ```
 GET /api/me/items
-Cookie: me_session=e-B3Z…(masked)
+Cookie: me_session=H1Zsv…(masked)
 → 200
-{"items": ["#37 준비 중인 프로젝트 메모 (가상)", "#38 지원하려는 곳 목록 (가상)", "#39 11월 개인 회고 (가상)", "#43 Alice만 아는 메모 (80b441)"]}
+{"items": ["#13 준비 중인 프로젝트 메모 (가상)", "#14 지원하려는 곳 목록 (가상)", "#15 11월 개인 회고 (가상)", "#19 Alice만 아는 메모 (341ca9)"]}
 ```
 
-**bob_80b441**
+**bob_341ca9**
 
 ```
 GET /api/me/items
-Cookie: me_session=-2C78…(masked)
+Cookie: me_session=2NrEs…(masked)
 → 200
-{"items": ["#40 준비 중인 프로젝트 메모 (가상)", "#41 지원하려는 곳 목록 (가상)", "#42 11월 개인 회고 (가상)", "#44 Bob의 지원 목록 (80b441)"]}
+{"items": ["#16 준비 중인 프로젝트 메모 (가상)", "#17 지원하려는 곳 목록 (가상)", "#18 11월 개인 회고 (가상)", "#20 Bob의 지원 목록 (341ca9)"]}
 ```
 
-### ✅ A(alice_80b441) 가 자기 자료 / B 의 자료 #44 요청 (C37)
+### ✅ A(alice_341ca9) 가 자기 자료 / B 의 자료 #20 요청 (C37)
 
 남의 자료는 '없음'과 똑같이 404 로 답해, 번호를 바꿔 보며 남의 자료가 있는지 알아낼 수 없게 했습니다.
 
 | 통과한 요청 | 거절된 요청 |
 |---|---|
-| <pre>GET /api/me/items/43<br>Cookie: me_session=e-B3Z…(masked)<br>→ 200<br>{"id": 43, "category": "memo", "category_label": "메모", "title": "Alice만 아는 메모 (80b441)", "body": "가상의 내용", "created_at": "2026-11-11T07:15:59Z"}</pre> | <pre>GET /api/me/items/44<br>Cookie: me_session=e-B3Z…(masked)<br>→ 404<br>{"error": "Not found"}</pre> |
+| <pre>GET /api/me/items/19<br>Cookie: me_session=H1Zsv…(masked)<br>→ 200<br>{"id": 19, "category": "memo", "category_label": "메모", "title": "Alice만 아는 메모 (341ca9)", "body": "가상의 내용", "created_at": "2026-11-11T07:26:16Z"}</pre> | <pre>GET /api/me/items/20<br>Cookie: me_session=H1Zsv…(masked)<br>→ 404<br>{"error": "Not found"}</pre> |
 
-### ✅ A 가 B 의 자료 #44 삭제 시도
-
-| 통과한 요청 | 거절된 요청 |
-|---|---|
-| <pre>GET /api/me/items<br>Cookie: me_session=e-B3Z…(masked)<br>→ 200<br>{"items": ["#37 준비 중인 프로젝트 메모 (가상)", "#38 지원하려는 곳 목록 (가상)", "#39 11월 개인 회고 (가상)", "#43 Alice만 아는 메모 (80b441)"]}</pre> | <pre>DELETE /api/me/items/44<br>Cookie: me_session=e-B3Z…(masked)<br>X-PDS: 1<br>→ 404<br>{"error": "Not found"}</pre> |
-
-### ✅ 반대 방향: B(bob_80b441) 가 자기 자료 / A 의 자료 #43 요청 (C38)
+### ✅ A 가 B 의 자료 #20 삭제 시도
 
 | 통과한 요청 | 거절된 요청 |
 |---|---|
-| <pre>GET /api/me/items/44<br>Cookie: me_session=-2C78…(masked)<br>→ 200<br>{"id": 44, "category": "apply", "category_label": "지원하려는 곳", "title": "Bob의 지원 목록 (80b441)", "body": "가상 회사 C", "created_at": "2026-11-11T07:15:59Z"}</pre> | <pre>GET /api/me/items/43<br>Cookie: me_session=-2C78…(masked)<br>→ 404<br>{"error": "Not found"}</pre> |
+| <pre>GET /api/me/items<br>Cookie: me_session=H1Zsv…(masked)<br>→ 200<br>{"items": ["#13 준비 중인 프로젝트 메모 (가상)", "#14 지원하려는 곳 목록 (가상)", "#15 11월 개인 회고 (가상)", "#19 Alice만 아는 메모 (341ca9)"]}</pre> | <pre>DELETE /api/me/items/20<br>Cookie: me_session=H1Zsv…(masked)<br>X-PDS: 1<br>→ 404<br>{"error": "Not found"}</pre> |
 
-### ✅ 반대 방향: B 가 A 의 자료 #43 삭제 시도
+### ✅ 반대 방향: B(bob_341ca9) 가 자기 자료 / A 의 자료 #19 요청 (C38)
 
 | 통과한 요청 | 거절된 요청 |
 |---|---|
-| <pre>GET /api/me/items<br>Cookie: me_session=-2C78…(masked)<br>→ 200<br>{"items": ["#40 준비 중인 프로젝트 메모 (가상)", "#41 지원하려는 곳 목록 (가상)", "#42 11월 개인 회고 (가상)", "#44 Bob의 지원 목록 (80b441)"]}</pre> | <pre>DELETE /api/me/items/43<br>Cookie: me_session=-2C78…(masked)<br>X-PDS: 1<br>→ 404<br>{"error": "Not found"}</pre> |
+| <pre>GET /api/me/items/20<br>Cookie: me_session=2NrEs…(masked)<br>→ 200<br>{"id": 20, "category": "apply", "category_label": "지원하려는 곳", "title": "Bob의 지원 목록 (341ca9)", "body": "가상 회사 C", "created_at": "2026-11-11T07:26:16Z"}</pre> | <pre>GET /api/me/items/19<br>Cookie: me_session=2NrEs…(masked)<br>→ 404<br>{"error": "Not found"}</pre> |
+
+### ✅ 반대 방향: B 가 A 의 자료 #19 삭제 시도
+
+| 통과한 요청 | 거절된 요청 |
+|---|---|
+| <pre>GET /api/me/items<br>Cookie: me_session=2NrEs…(masked)<br>→ 200<br>{"items": ["#16 준비 중인 프로젝트 메모 (가상)", "#17 지원하려는 곳 목록 (가상)", "#18 11월 개인 회고 (가상)", "#20 Bob의 지원 목록 (341ca9)"]}</pre> | <pre>DELETE /api/me/items/19<br>Cookie: me_session=2NrEs…(masked)<br>X-PDS: 1<br>→ 404<br>{"error": "Not found"}</pre> |
 
 ### ✅ 거절 앞뒤 자료 건수 (C39)
 
@@ -312,30 +312,30 @@ B 의 자료: 거절 전 **4건** → 거절 후 **4건** · A 의 자료: 거�
 ### ✅ 주소에 다른 계정을 적어 보내도 내 자료만 (C40)
 
 ```
-GET /api/me/items?account=bob_80b441&account_id=2&username=bob_80b441
-Cookie: me_session=e-B3Z…(masked)
+GET /api/me/items?account=bob_341ca9&account_id=2&username=bob_341ca9
+Cookie: me_session=H1Zsv…(masked)
 → 200
-{"items": ["#37 준비 중인 프로젝트 메모 (가상)", "#38 지원하려는 곳 목록 (가상)", "#39 11월 개인 회고 (가상)", "#43 Alice만 아는 메모 (80b441)"]}
+{"items": ["#13 준비 중인 프로젝트 메모 (가상)", "#14 지원하려는 곳 목록 (가상)", "#15 11월 개인 회고 (가상)", "#19 Alice만 아는 메모 (341ca9)"]}
 ```
 
 **본문에 B 의 계정을 적어 자료 추가**
 
 ```
 POST /api/me/items
-Cookie: me_session=e-B3Z…(masked)
+Cookie: me_session=H1Zsv…(masked)
 X-PDS: 1
-{"category": "memo", "title": "몰래 넣기 (80b441)", "account_id": 2, "username": "bob_80b441"}
+{"category": "memo", "title": "몰래 넣기 (341ca9)", "account_id": 2, "username": "bob_341ca9"}
 → 201
-{"id": 45, "category": "memo", "category_label": "메모", "title": "몰래 넣기 (80b441)", "body": "", "created_at": "2026-11-11T07:16:00Z"}
+{"id": 21, "category": "memo", "category_label": "메모", "title": "몰래 넣기 (341ca9)", "body": "", "created_at": "2026-11-11T07:26:16Z"}
 ```
 B 의 자료 목록에 `몰래 넣기` 가 생겼는지: **✅ 아니오** — 본문의 `account_id`·`username` 은 읽지 않고 세션의 계정(A)으로 저장됩니다.
 
 
-### ✅ A 가 B 의 패스키 #14 삭제 시도
+### ✅ A 가 B 의 패스키 #6 삭제 시도
 
 | 통과한 요청 | 거절된 요청 |
 |---|---|
-| <pre>GET /api/me/passkeys<br>Cookie: me_session=e-B3Z…(masked)<br>→ 200<br>{"passkeys": ["#15 Alice phone (2026-11-11)"]}</pre> | <pre>DELETE /api/me/passkeys/14<br>Cookie: me_session=e-B3Z…(masked)<br>X-PDS: 1<br>→ 404<br>{"error": "Not found"}</pre> |
+| <pre>GET /api/me/passkeys<br>Cookie: me_session=H1Zsv…(masked)<br>→ 200<br>{"passkeys": ["#7 Alice phone (2026-11-11)"]}</pre> | <pre>DELETE /api/me/passkeys/6<br>Cookie: me_session=H1Zsv…(masked)<br>X-PDS: 1<br>→ 404<br>{"error": "Not found"}</pre> |
 
 ### ✅ A 의 아이디로 로그인 — A 의 패스키 / B 의 패스키
 
@@ -343,7 +343,72 @@ B 의 자료 목록에 `몰래 넣기` 가 생겼는지: **✅ 아니오** — �
 
 | 통과한 요청 | 거절된 요청 |
 |---|---|
-| <pre>POST /api/me/login/verify<br>Cookie: (none)<br>X-PDS: 1<br>{"credential": {"id": "f2AePrGcCkPENbzlF5sbMnzS…(43자)", "rawId": "f2AePrGcCkPENbzlF5sbMnzS…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(179자)", "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_k…(50자)", "signature": "MEUCIGNd1HOt-gEzsliL7Ufc…(95자)", "userHandle": "K_0NrbKWhxmVeqJBa1lx4A"}}}<br>→ 200<br>Set-Cookie: me_session=E9lQp…(masked); Path=/; HttpOnly; SameSite=Strict; Max-Age=43200<br>{"ok": true, "account": {"username": "alice_80b441"}, "passkey": "Alice phone"}</pre> | <pre>POST /api/me/login/verify<br>Cookie: (none)<br>X-PDS: 1<br>{"credential": {"id": "AiA3FcT6k1eQ07XsdOJECvuv…(43자)", "rawId": "AiA3FcT6k1eQ07XsdOJECvuv…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(179자)", "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_k…(50자)", "signature": "MEYCIQDy4kqwqiy35x3m3hX5…(96자)", "userHandle": "5ZaXCZhAijGsgUeRO87jmg"}}}<br>→ 403<br>{"error": "This passkey belongs to a different account"}</pre> |
+| <pre>POST /api/me/login/verify<br>Cookie: (none)<br>X-PDS: 1<br>{"credential": {"id": "p6D94bSm-1g183C2HSJ3bwyx…(43자)", "rawId": "p6D94bSm-1g183C2HSJ3bwyx…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(179자)", "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_k…(50자)", "signature": "MEYCIQCs9Wzzh5RwTwyM3U23…(96자)", "userHandle": "2nlK4h0a64v56aMc4av0YA"}}}<br>→ 200<br>Set-Cookie: me_session=iHSYE…(masked); Path=/; HttpOnly; SameSite=Strict; Max-Age=43200<br>{"ok": true, "account": {"username": "alice_341ca9"}, "passkey": "Alice phone"}</pre> | <pre>POST /api/me/login/verify<br>Cookie: (none)<br>X-PDS: 1<br>{"credential": {"id": "zU9kMnWRhxwYxh1Kh8Hf3MqX…(43자)", "rawId": "zU9kMnWRhxwYxh1Kh8Hf3MqX…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(179자)", "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_k…(50자)", "signature": "MEUCIQCwArtrSsJtC5pmAzW6…(95자)", "userHandle": "4FHJjjSbAS88IL4aypeDiA"}}}<br>→ 403<br>{"error": "This passkey belongs to a different account"}</pre> |
+
+## 6. 결과물 주소(GitHub Pages)에서 부르기
+
+결과물 https://lee-minsoo6944.github.io/About-me/ 의 화면은 이 서버와 주소가 달라서, 브라우저가 `Origin` 머리글을 붙여 보냅니다. 서버는 이 주소에만 CORS 를 열고, rpId 를 `lee-minsoo6944.github.io` 로 정하며, 쿠키 대신 **응답 본문의 세션 토큰**을 줍니다(화면은 탭을 닫으면 지워지는 sessionStorage 에 두고 `Authorization: Bearer` 로 보냄). 토큰 값은 앞 5글자 뒤를 가렸습니다.
+
+
+### ✅ 사전 요청(preflight) — 결과물 주소 / 다른 사이트
+
+다른 사이트에는 허락 머리글이 없어서, 그 사이트의 자바스크립트는 이 API 의 응답을 읽을 수 없습니다.
+
+| 통과한 요청 | 거절된 요청 |
+|---|---|
+| <pre>OPTIONS /api/me/login/options<br>Cookie: (none)<br>Origin: https://lee-minsoo6944.github.io<br>Access-Control-Request-Method: POST<br>→ 204<br>Access-Control-Allow-Origin: https://lee-minsoo6944.github.io<br>""</pre> | <pre>OPTIONS /api/me/login/options<br>Cookie: (none)<br>Origin: https://evil.example<br>Access-Control-Request-Method: POST<br>→ 401<br>Access-Control-Allow-Origin: (없음 → 브라우저가 응답을 화면에 넘기지 않음)<br>{"error": "Log in with a passkey to see the private area"}</pre> |
+
+### ✅ 결과물 주소에서 등록 — rpId 가 github.io, 쿠키 없이 토큰
+
+```
+POST /api/me/register/options
+Cookie: (none)
+X-PDS: 1
+Origin: https://lee-minsoo6944.github.io
+{"username": "gh_341ca9", "passkey_name": "GitHub Pages laptop"}
+→ 200
+Access-Control-Allow-Origin: https://lee-minsoo6944.github.io
+{"publicKey": {"challenge": "Wckw-L4jykVGml-1LjRodoAV8mOr…(43자)", "rp": {"id": "lee-minsoo6944.github.io", "name": "Lee Minsoo · About me"}, "user": {"id": "v7JrCvch0SHrRfZ7TrXLeA", "name": "gh_341ca9", "displayName":…
+```
+```
+POST /api/me/register/verify
+Cookie: (none)
+X-PDS: 1
+Origin: https://lee-minsoo6944.github.io
+{"credential": {"id": "aQCn3HHcv_ojBpawmRVg5z2r…(43자)", "rawId": "aQCn3HHcv_ojBpawmRVg5z2r…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(198자)", "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10…(259자)", "transports": ["internal", "hybrid"]}}}
+→ 200
+Access-Control-Allow-Origin: https://lee-minsoo6944.github.io
+{"ok": true, "account": {"username": "gh_341ca9"}, "passkey": {"id": 8, "name": "GitHub Pages laptop", "created_at": "2026-11-11T07:26:16Z", "last_used_at": null, "storage": "비밀번호 관리자(종류 알 수 없음) · 여러 기기에 동기화됨", "aagui…
+```
+
+### ✅ 토큰 있음 / 없음으로 비공개 자료 요청
+
+| 통과한 요청 | 거절된 요청 |
+|---|---|
+| <pre>GET /api/me/items<br>Cookie: (none)<br>Origin: https://lee-minsoo6944.github.io<br>Authorization: Bearer FMz1w…(masked)<br>→ 200<br>Access-Control-Allow-Origin: https://lee-minsoo6944.github.io<br>{"items": ["#22 준비 중인 프로젝트 메모 (가상)", "#23 지원하려는 곳 목록 (가상)", "#24 11월 개인 회고 (가상)"]}</pre> | <pre>GET /api/me/items<br>Cookie: (none)<br>Origin: https://lee-minsoo6944.github.io<br>→ 401<br>Access-Control-Allow-Origin: https://lee-minsoo6944.github.io<br>{"error": "Log in with a passkey to see the private area"}</pre> |
+
+### ✅ 로그아웃 전 / 후 — 같은 토큰
+
+왼쪽은 토큰을 받은 등록 응답, 오른쪽은 `POST /api/me/logout` 뒤에 같은 토큰을 다시 보낸 요청입니다. 서버에서 세션 줄을 지웠으므로 거절됩니다.
+
+| 통과한 요청 | 거절된 요청 |
+|---|---|
+| <pre>POST /api/me/register/verify<br>Cookie: (none)<br>X-PDS: 1<br>Origin: https://lee-minsoo6944.github.io<br>{"credential": {"id": "aQCn3HHcv_ojBpawmRVg5z2r…(43자)", "rawId": "aQCn3HHcv_ojBpawmRVg5z2r…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(198자)", "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10…(259자)", "transports": ["internal", "hybrid"]}}}<br>→ 200<br>Access-Control-Allow-Origin: https://lee-minsoo6944.github.io<br>{"ok": true, "account": {"username": "gh_341ca9"}, "passkey": {"id": 8, "name": "GitHub Pages laptop", "created_at": "2026-11-11T07:26:16Z", "last_used_at": null, "storage": "비밀번호 관리자(종류 알 수 없음) · 여러 기기에 동기화됨", "aagui…</pre> | <pre>GET /api/me/items<br>Cookie: (none)<br>Origin: https://lee-minsoo6944.github.io<br>Authorization: Bearer FMz1w…(masked)<br>→ 401<br>Access-Control-Allow-Origin: https://lee-minsoo6944.github.io<br>{"error": "Log in with a passkey to see the private area"}</pre> |
+
+### ✅ 다른 주소에서 만든 등록 응답을 결과물 주소 요청으로 보내기
+
+인증기가 서명한 `clientDataJSON.origin` 은 화면의 진짜 주소라, 요청 머리글만 바꿔서는 통과할 수 없습니다.
+
+```
+POST /api/me/register/verify
+Cookie: (none)
+X-PDS: 1
+Origin: https://lee-minsoo6944.github.io
+{"credential": {"id": "fpQ0-5Ck_gd5LKrs_FhADBpr…(43자)", "rawId": "fpQ0-5Ck_gd5LKrs_FhADBpr…(43자)", "type": "public-key", "response": {"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4u…(183자)", "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10…(259자)", "transports": ["internal", "hybrid"]}}}
+→ 400
+Access-Control-Allow-Origin: https://lee-minsoo6944.github.io
+{"error": "clientData.origin does not match this site"}
+```
 
 ### 거절을 만드는 소스 위치 (C41)
 
@@ -353,6 +418,7 @@ B 의 자료 목록에 `몰래 넣기` 가 생겼는지: **✅ 아니오** — �
 - `intro.py` `login_verify()` — 챌린지에 묶인 계정과 패스키 주인이 다르면 403
 - `intro.py` `consume_challenge()` — 모르는·이미 쓴·만료된 챌린지 거절
 - `passkey.py` `verify_assertion()` — origin·rpIdHash·UP/UV 플래그·서명·signCount 검사
+- `intro.py` `cors_headers()` · `site()` — 결과물 주소(GitHub Pages)에만 CORS, 그 주소의 rpId·origin 으로 검사
 
 
 ---

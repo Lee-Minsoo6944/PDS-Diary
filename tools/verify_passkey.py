@@ -94,6 +94,8 @@ def show(r, full_payload=False):
     elif r.get("headers", {}).get("Origin"):
         lines.append("Access-Control-Allow-Origin: (없음 → 브라우저가 응답을 화면에 넘기지 않음)")
     p = r["payload"]
+    if isinstance(p, dict) and p.get("token"):  # 줄이기 전에 먼저 가림
+        p = dict(p, token=p["token"][:5] + "…(masked)")
     if isinstance(p, dict) and "items" in p and not full_payload:
         p = {"items": [f"#{x['id']} {x['title']}" for x in p["items"]]}
     elif isinstance(p, dict) and "passkeys" in p and not full_payload:

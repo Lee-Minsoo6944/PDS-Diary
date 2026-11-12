@@ -93,10 +93,12 @@ attestation 은 `"none"` 으로 요청합니다. 인증기 제조사 증명서�
 | 로그아웃 뒤 같은 쿠키·토큰 | 로그아웃 전 `GET /api/me/items` → **200** | 로그아웃 후 같은 쿠키 → **401**, 같은 토큰 → **401** |
 | 결과물 주소(GitHub Pages) | `Origin: https://lee-minsoo6944.github.io` 사전 요청 → **204** + 허락 머리글, 등록 → rpId `lee-minsoo6944.github.io`, 쿠키 없이 토큰 | `Origin: https://evil.example` 사전 요청 → 허락 머리글 **없음** · localhost 에서 만든 응답을 결과물 주소로 → **400** `clientData.origin does not match this site` |
 
+**실제 배포 서버에서 한 "패스키 두 개 → 하나 삭제" 확인:** [docs/passkey-two-keys-production.md](docs/passkey-two-keys-production.md) — https://alstn.pythonanywhere.com 에 결과물 주소(`lee-minsoo6944.github.io`) 조건으로 시험 계정을 만들어, 두 번째 패스키 추가 → 첫 번째 삭제 → 남은 패스키 로그인 **200** / 지운 패스키 로그인 **401** / 마지막 패스키 삭제 **409** 를 확인했습니다. 두 패스키는 `tools/soft_authenticator.py` 로 만든 **소프트웨어 시험 키**입니다. 실제 계정 `123` 의 첫 패스키는 구글 비밀번호 관리자에 있고, 이 PC에는 두 번째로 쓸 다른 인증기가 없었습니다(Windows 계정에 비밀번호가 없어 Windows Hello PIN 불가, 휴대폰·보안 키 미사용).
+
 **실제 기기로 한 확인** (✏️ 직접 채울 곳 — 아래 "실제 기기로 할 일" 참고)
 
-- 패스키 1 이름·저장된 곳: ✏️ (예: "노트북 Windows Hello" — **기기 자체**(Windows Hello) / 또는 **구글 비밀번호 관리자**)
-- 패스키 2 이름·저장된 곳: ✏️ (예: "내 휴대폰" — 휴대폰으로 QR 을 찍어 **구글 비밀번호 관리자** / 또는 **보안 키**)
+- 계정 `123` 의 패스키 저장 위치: **구글 비밀번호 관리자**(Chrome, 여러 기기에 동기화). ✏️ `456` 도 패스키 표의 "저장된 곳"을 보고 적기. 같은 곳에 두 번째 패스키를 만들려 하면 `excludeCredentials` 때문에 "이 인증기에는 이 계정의 패스키가 이미 있습니다"가 나옴
+- 두 번째 패스키: 실제 인증기 대신 위의 소프트웨어 시험 키 두 개로 확인(실제 배포 서버 기록)
 - 화면 캡처: ✏️ `docs/images/passkey-*.png` (공개/비공개 경계, 패스키 두 개 목록, 하나 지운 뒤 로그인, 지운 패스키 로그인 실패)
 
 ## ⑤ AI와 나
